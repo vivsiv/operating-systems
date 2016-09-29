@@ -7,6 +7,8 @@
 #define STDOUT 1
 #define BUF_SIZE 1024
 
+static const char EOT = 4;
+
 int main(int argc, char *argv[]){
 	struct termios old_term_settings;
 	struct termios new_term_settings;
@@ -41,7 +43,7 @@ int main(int argc, char *argv[]){
 					write(STDOUT, "\r\n", 2);
 					break;
 				//Handle ^D by restoring old terminal attributes and exiting
-				case 4:
+				case EOT:
 					err = tcsetattr(STDIN, TCSAFLUSH, &old_term_settings);
 					if (err > 0) {
 						perror("Error restoring old stdin terminal settings");
