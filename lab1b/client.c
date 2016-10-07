@@ -21,6 +21,8 @@ static int encrypt_flag;
 
 static int sock_fd;
 
+pthread_mutex_t log_mutex;
+
 #define BUF_SIZE 1024
 #define HOST_NAME "localhost"
 
@@ -78,10 +80,28 @@ void parse_options(int argc, char *argv[]){
 	}
 }
 
-void *read_from_socket(void *args){
+struct read_socket_args {
+	int log_fd;
+};
+
+void log_to_file(char *type, int log_fd, char *log_msg){
+	char bytes_str[100];
+	bzero(bytes_str, 100);
+	sprintf(bytes_str, "%s %lu bytes: ", type, strlen(log_msg));
+	
+	write(log_fd, bytes_str, strlen(bytes_str));
+	write(log_fd, log_msg, strlen(log_msg));
+	write(log_fd, "\n", 1);
+}
+
+void *read_socket(void *args){
+	struct read_socket_args *s_args = (struct read_socket_args*)args;
+
 	char buf[BUF_SIZE];
 	int n_bytes;
 
+	char log_msg[BUF_SIZE];
+	int log_idx = 0;
 	while ((n_bytes = read(sock_fd, buf, BUF_SIZE)) > 0){
 		for (int i = 0; i < n_bytes; i++){
 			char c_out = buf[i];
@@ -90,6 +110,14 @@ void *read_from_socket(void *args){
 				case '\r':
 				case '\n':
 					write(STDOUT_FILENO, "\r\n", 2);
+					if (s_args->log_fd >= 0){
+						log_msg[log_idx] = '\0';
+						pthread_mutex_lock(&log_mutex);
+						log_to_file("RECVD", s_args->log_fd, log_msg);
+						pthread_mutex_unlock(&log_mutex);
+						bzero(log_msg, BUF_SIZE);
+						log_idx = 0;
+					}
 					break;
 				//Handle ^D
 				case '\004':
@@ -100,6 +128,10 @@ void *read_from_socket(void *args){
 				default:
 					//Write the character out to STDOUT in the kb process
 					write(STDOUT_FILENO, buf + i, 1);
+					if (s_args->log_fd >= 0){
+						log_msg[log_idx] = c_out;
+						log_idx++;
+					}
 					break;
 			}
 		}
@@ -110,15 +142,6 @@ void *read_from_socket(void *args){
 	return NULL;
 }
 
-void write_to_log(int log_fd, char *log_msg){
-	char bytes_str[100];
-	bzero(bytes_str, 100);
-	sprintf(bytes_str, "SENT %lu bytes: ", strlen(log_msg));
-	
-	write(log_fd, bytes_str, strlen(bytes_str));
-	write(log_fd, log_msg, strlen(log_msg));
-	write(log_fd, "\n", 1);
-}
 
 int main(int argc, char *argv[]){
 	atexit(cleanup_terminal);
@@ -160,7 +183,9 @@ int main(int argc, char *argv[]){
 
 	//spin up a second thread to read from the socket and write responses back to STDOUT
 	pthread_t read_socket_thread;
-	pthread_create(&read_socket_thread, NULL, read_from_socket, NULL);
+	struct read_socket_args s_args;
+	s_args.log_fd = log_fd;
+	pthread_create(&read_socket_thread, NULL, read_socket, &s_args);
 
 	//in the main thread we read from the keyboard and write to the socket
 	char buf[BUF_SIZE];
@@ -177,7 +202,9 @@ int main(int argc, char *argv[]){
 					write(sock_fd, "\n", 1);
 					if (log_fd >= 0){
 						log_msg[log_idx] = '\0';
-						write_to_log(log_fd, log_msg);
+						pthread_mutex_lock(&log_mutex);
+						log_to_file("SENT", log_fd, log_msg);
+						pthread_mutex_unlock(&log_mutex);
 						bzero(log_msg, BUF_SIZE);
 						log_idx = 0;
 					}
