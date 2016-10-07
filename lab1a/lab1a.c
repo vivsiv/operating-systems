@@ -12,9 +12,6 @@
 
 #define BUF_SIZE 1024
 
-static const char EOT = 4;
-static const char INTERRUPT = 3;
-
 static struct termios old_term_settings;
 
 struct read_shell_args {
@@ -42,36 +39,41 @@ void *read_shell_output(void *args){
 	return NULL;
 }
 
-//Restore the old terminal settings and print the shell's exit status 
-void cleanup(){
+//Restore the old terminal settings
+void cleanup_terminal(){
 	if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &old_term_settings) == -1) {
 		perror("tcsetattr");
 	}
+}
 
+//Wait for the shell process to terminate and print its exit status
+void wait_for_shell(){
+	int pid;
 	int status;
 	//Grab the exit status of the shell process
-	if (waitpid(-1, &status, WUNTRACED) == -1){
-		perror("waitpid");
-	}
-	
-	if (WIFEXITED(status)) {
-	    fprintf(stderr, "shell process exited with status=%d\n", WEXITSTATUS(status));
-	} else if (WIFSIGNALED(status)) {
-	    fprintf(stderr, "shell process killed by signal %d\n", WTERMSIG(status));
-	} else if (WIFSTOPPED(status)) {
-	    fprintf(stderr, "shell process stopped by signal %d\n", WSTOPSIG(status));
-	}
+	pid = waitpid(-1, &status, 0);
 
+    if (pid < 0) {
+    	perror("waitpid");
+  	}
+  	else if (WIFEXITED(status)) {
+	    fprintf(stdout, "shell process exited normally with status %d\n", WEXITSTATUS(status));
+	}
+	else if (WIFSIGNALED(status)){
+		fprintf(stdout, "shell process killed by signal %d\n", WTERMSIG(status));
+	}
+	else {
+		fprintf(stdout, "shell process exited abnormally\n");		
+	}
 }
 
 void sigpipe_handler(int signal){
-	perror("SIGPIPE signal recvd");
 	exit(1);
 }
 
 int main(int argc, char *argv[]){
-	//Setup the atexit handler
-	atexit(cleanup);
+	//Setup the atexit cleanup handler
+	atexit(cleanup_terminal);
 
 	//Get the current terminal settings
 	if (tcgetattr(STDIN_FILENO, &old_term_settings) == -1) {
@@ -90,7 +92,7 @@ int main(int argc, char *argv[]){
 
 	//Check for --shell
 	int opt_char;
-	int shell_flag;
+	int shell_flag = 0;
 	struct option long_options[] = {
 		{"shell", no_argument, &shell_flag, 1},
 		{0, 0, 0, 0}
@@ -109,6 +111,9 @@ int main(int argc, char *argv[]){
 	int shell_to_kb_pipe[2];
 	//process_id of child
 	int c_pid;
+	//thread_id for reading output from shell process
+	pthread_t shell_out_thread;
+
 	if (shell_flag == 1){
 		if (pipe(kb_to_shell_pipe) == -1 || pipe(shell_to_kb_pipe) == -1){
 			perror("pipe");
@@ -150,14 +155,15 @@ int main(int argc, char *argv[]){
 			//Close the write-end of the shell_to_kb pipe
 			close(shell_to_kb_pipe[1]);
 
-			//Setup a signal handler to handle a SIGPIPE from the shell process
 			signal(SIGPIPE, sigpipe_handler);
 
 			//Create a thread to send the shell process' output back to the keyboard process' STDOUT
-			pthread_t shell_out_thread;
 			struct read_shell_args sargs;
 	    	sargs.shell_to_kb = shell_to_kb_pipe[0];
 			pthread_create(&shell_out_thread, NULL, read_shell_output, &sargs);
+
+			//setup an exit handler to wait for the shell process;
+			atexit(wait_for_shell);
 		}
 	}
 
@@ -181,14 +187,17 @@ int main(int argc, char *argv[]){
 					write(STDOUT_FILENO, "\r\n", 2);
 					break;
 				//Handle ^D by closing the pip and sending a SIGHUP to the shell
-				case EOT:
+				case '\004':
 					if (shell_flag == 1){
+						//To solve the race condition discussed in piazza, just kill the other thread.
+						pthread_cancel(shell_out_thread);
 						close(kb_to_shell_pipe[1]);
+						close(shell_to_kb_pipe[0]);
 						kill(c_pid, SIGHUP);
 					}
-					exit(1);
+					exit(0);
 				//Handle ^C by sending a SIGINT to the shell
-				case INTERRUPT:
+				case '\003':
 					if (shell_flag == 1){
 						kill(c_pid, SIGINT);
 					}

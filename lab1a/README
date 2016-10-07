@@ -1,0 +1,43 @@
+Design:
+	As was suggested in the docs I saved the old terminal settings before changing them, then used an at exit handler to restore them
+
+ 	I used the main thread in the parent process to read from the keyboard and forward it to the shell, this way I only had to 
+ 	create one new thread for reading output back from the shell's output.
+
+ 	I added a sigpipe handler to the main thread in the parent process to handle SIGPIPE's from the shell process.
+
+ 	I used another atexit handler in the parent process to wait for the shell process to exit and print its status.
+
+ 	On piazza there was a race condition discussed between exit order the two threads, to avoid this I simply killed the thread that
+ 	reads from the shell output before the main thread tries to exit
+
+Testing:
+	When I run the program WITHOUT the --shell option:
+		the terminal ouptputs one character at a time without echo
+		It exits with code 0 when receiving a ^D
+
+	When I run the program WITH the --shell option:
+		The terminal feeds commands to the shell and outputs the result.
+		Nonsensical commands get errors from the shell: 
+			> ./lab1a --shell
+			> hello
+			> /bin/bash: line 2: hello: command not found
+		If I run a unix command like wc the shell executes the command and prints the result
+			> ./lab1a --shell
+			> echo hello world | wc
+			>     1       2      12
+		If I send the terminal a ^D the shell is sent a SIGHUP and that status is printed out to the terminal when it exits
+			> ./lab1a --shell
+			> ^D
+			> shell process killed by signal 1
+
+References:
+	For understanding termios and getting/setting terminal attributes
+	https://blog.nelhage.com/2009/12/a-brief-introduction-to-termios-termios3-and-stty/
+
+	For understanding pipes
+	https://ocaml.github.io/ocamlunix/pipes.html
+
+	For understanding waitpid
+	https://support.sas.com/documentation/onlinedoc/sasc/doc/lr2/waitpid.htm	
+
