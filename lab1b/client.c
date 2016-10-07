@@ -12,6 +12,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netdb.h>
+#include <fcntl.h>
 
 static struct termios old_term_settings;
 static int port_no;
@@ -109,6 +110,16 @@ void *read_from_socket(void *args){
 	return NULL;
 }
 
+void write_to_log(int log_fd, char *log_msg){
+	char bytes_str[100];
+	bzero(bytes_str, 100);
+	sprintf(bytes_str, "SENT %lu bytes: ", strlen(log_msg));
+	
+	write(log_fd, bytes_str, strlen(bytes_str));
+	write(log_fd, log_msg, strlen(log_msg));
+	write(log_fd, "\n", 1);
+}
+
 int main(int argc, char *argv[]){
 	atexit(cleanup_terminal);
 
@@ -139,13 +150,13 @@ int main(int argc, char *argv[]){
 		error("Error connecting to host");
 	}
 
-	// int log_fd = -1;
-	// if (log_file != NULL){
-	// 	log_fd = open(log_file, O_WRONLY);
-	// }
-	// if (log_fd < 0){
-	// 	fprintf(stderr, "ERROR: unable to open log file: %s\n", log_file);
-	// }
+	int log_fd = -1;
+	if (log_file != NULL){
+		log_fd = open(log_file, O_WRONLY);
+	}
+	if (log_fd < 0){
+		fprintf(stderr, "ERROR: unable to open log file: %s\n", log_file);
+	}
 
 	//spin up a second thread to read from the socket and write responses back to STDOUT
 	pthread_t read_socket_thread;
@@ -154,6 +165,8 @@ int main(int argc, char *argv[]){
 	//in the main thread we read from the keyboard and write to the socket
 	char buf[BUF_SIZE];
 	int n_bytes;
+	char log_msg[BUF_SIZE];
+	int log_idx = 0;
 	while ((n_bytes = read(STDIN_FILENO, buf, BUF_SIZE)) > 0){
 		for (int i = 0; i < n_bytes; i++){
 			char c_out = buf[i];
@@ -162,6 +175,12 @@ int main(int argc, char *argv[]){
 				case '\r':
 				case '\n':
 					write(sock_fd, "\n", 1);
+					if (log_fd >= 0){
+						log_msg[log_idx] = '\0';
+						write_to_log(log_fd, log_msg);
+						bzero(log_msg, BUF_SIZE);
+						log_idx = 0;
+					}
 					write(STDOUT_FILENO, "\r\n", 2);
 					break;
 				//Handle ^D
@@ -173,6 +192,10 @@ int main(int argc, char *argv[]){
 				default:
 					//Write the character out to STDOUT in the kb process
 					write(sock_fd, buf + i, 1);
+					if (log_fd >= 0){
+						log_msg[log_idx] = c_out;
+						log_idx++;
+					}
 					write(STDOUT_FILENO, buf + i, 1);
 					break;
 			}
