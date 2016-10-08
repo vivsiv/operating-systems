@@ -1,8 +1,8 @@
 CC=gcc
 
-CFLAGS=-Wall -pthread
+CFLAGS=-Wall -pthread -lmcrypt
 
-GDBFLAGS=-g -Wall -pthread
+GDBFLAGS=-g -Wall -pthread -lmcrypt
 
 all:
 	$(CC) $(CFLAGS) client.c -o client

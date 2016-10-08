@@ -12,11 +12,16 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netdb.h>
+#include <fcntl.h>
+#include <mcrypt.h>
 
-#define BUF_SIZE 1024
+#define BUF_SIZE 256
+#define SEED 14
 
 static int port_no;
-static int encrypt_flag;
+static int encrypt_flag = 0;
+
+static MCRYPT td;
 
 void error(char *msg){
 	perror(msg);
@@ -43,6 +48,44 @@ void parse_options(int argc, char *argv[]){
 	}
 }
 
+void setup_encryption(){
+	int key_size = 16; //128 bits
+	char key[key_size];
+	int key_fd;
+	int i;
+	char *IV;
+
+	key_fd = open("my.key", O_RDONLY);
+	if (key_fd < 0) error("encryption setup");
+	i = read(key_fd, key, key_size);
+	if (i != key_size) error("encryption setup");
+
+	td = mcrypt_module_open("twofish", NULL, "cfb", NULL);
+	if (td == MCRYPT_FAILED) error("encryption setup");
+
+
+	IV = malloc(mcrypt_enc_get_iv_size(td));
+	srand(SEED);
+	for (i = 0; i < mcrypt_enc_get_iv_size(td); i++) {
+    	IV[i] = rand();
+  	}
+
+	i = mcrypt_generic_init(td, key, key_size, IV);
+	if (i < 0) error("encryption setup");
+}
+
+void encrypt(char *data, int len){
+	if (mcrypt_generic(td, data, len) < 0){
+		error("encrypt");
+	}
+}
+
+void decrypt(char *data, int len){
+	if (mdecrypt_generic(td, data, len) < 0){
+		error("decrypt");
+	}
+}
+
 struct read_shell_args {
 	int shell_to_server_pipe;
 	int sock_fd;
@@ -57,7 +100,11 @@ void *read_shell_output(void *args){
 
 	//Server reads from shell process and writes it to the socket
 	while ((n_bytes = read(s_args->shell_to_server_pipe, buf, BUF_SIZE)) > 0){
+		if (encrypt_flag == 1){
+			encrypt(buf, n_bytes);
+		}
 		write(s_args->sock_fd, buf, n_bytes);
+		bzero(buf, BUF_SIZE);
 	}
 
 	fprintf(stdout, "Done reading from shell\n");
@@ -72,6 +119,8 @@ void *read_shell_output(void *args){
 
 int main(int argc, char *argv[]){
 	parse_options(argc, argv);
+
+	if (encrypt_flag == 1) setup_encryption();
 
 	int sock_fd, newsock_fd;
 	socklen_t clilen;
@@ -148,7 +197,11 @@ int main(int argc, char *argv[]){
 		bzero(buf, BUF_SIZE);
 
 		while ((n_bytes = read(newsock_fd, buf, BUF_SIZE - 1) > 0)){
+			if (encrypt_flag == 1){
+				decrypt(buf, n_bytes);
+			}
 			write(server_to_shell_pipe[1], buf, n_bytes);
+			bzero(buf, BUF_SIZE);
 		}
 
      	if (n_bytes < 0) error("ERROR reading from socket");

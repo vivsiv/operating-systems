@@ -13,18 +13,22 @@
 #include <netinet/in.h>
 #include <netdb.h>
 #include <fcntl.h>
+#include <mcrypt.h>
 
 static struct termios old_term_settings;
 static int port_no;
 static char *log_file;
-static int encrypt_flag;
+static int encrypt_flag = 0;
 
 static int sock_fd;
 
+static MCRYPT td;
+
 pthread_mutex_t log_mutex;
 
-#define BUF_SIZE 1024
+#define BUF_SIZE 256
 #define HOST_NAME "localhost"
+#define SEED 14
 
 void error(char *msg){
 	perror(msg);
@@ -34,16 +38,14 @@ void error(char *msg){
 //Set the terminal to non-canonical, non-echo mode
 void setup_terminal(){
 	if (tcgetattr(STDIN_FILENO, &old_term_settings) == -1) {
-		perror("tcgetattr");
-		exit(1);
+		error("tcgetattr");
 	}
 	
 	struct termios new_term_settings;
 	new_term_settings = old_term_settings;
 	new_term_settings.c_lflag &= ~(ICANON | ECHO);
 	if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &new_term_settings) == -1) {
-		perror("tcsetattr");
-		exit(1);
+		error("tcsetattr");
 	}
 }
 
@@ -80,13 +82,51 @@ void parse_options(int argc, char *argv[]){
 	}
 }
 
+void setup_encryption(){
+	int key_size = 16; //128 bits
+	char key[key_size];
+	int key_fd;
+	int i;
+	char *IV;
+
+	key_fd = open("my.key", O_RDONLY);
+	if (key_fd < 0) error("encryption setup");
+	i = read(key_fd, key, key_size);
+	if (i != key_size) error("encryption setup");
+
+	td = mcrypt_module_open("twofish", NULL, "cfb", NULL);
+	if (td == MCRYPT_FAILED) error("encryption setup");
+
+
+	IV = malloc(mcrypt_enc_get_iv_size(td));
+	srand(SEED);
+	for (i = 0; i < mcrypt_enc_get_iv_size(td); i++) {
+    	IV[i] = rand();
+  	}
+
+	i = mcrypt_generic_init(td, key, key_size, IV);
+	if (i < 0) error("encryption setup");
+}
+
+void encrypt(char *data, int len){
+	if (mcrypt_generic(td, data, len) < 0){
+		error("encrypt");
+	}
+}
+
+void decrypt(char *data, int len){
+	if (mdecrypt_generic(td, data, len) < 0){
+		error("encrypt");
+	}
+}
+
 struct read_socket_args {
 	int log_fd;
 };
 
 void log_to_file(char *type, int log_fd, char *log_msg){
-	char bytes_str[100];
-	bzero(bytes_str, 100);
+	char bytes_str[BUF_SIZE];
+	bzero(bytes_str, BUF_SIZE);
 	sprintf(bytes_str, "%s %lu bytes: ", type, strlen(log_msg));
 	
 	write(log_fd, bytes_str, strlen(bytes_str));
@@ -98,11 +138,16 @@ void *read_socket(void *args){
 	struct read_socket_args *s_args = (struct read_socket_args*)args;
 
 	char buf[BUF_SIZE];
+	bzero(buf, BUF_SIZE);
 	int n_bytes;
 
 	char log_msg[BUF_SIZE];
+	bzero(log_msg, BUF_SIZE);
 	int log_idx = 0;
-	while ((n_bytes = read(sock_fd, buf, BUF_SIZE)) > 0){
+	while ((n_bytes = read(sock_fd, buf, BUF_SIZE - 1)) > 0){
+		if (encrypt_flag == 1){
+			decrypt(buf, n_bytes);
+		}
 		for (int i = 0; i < n_bytes; i++){
 			char c_out = buf[i];
 			switch (c_out) {
@@ -113,7 +158,7 @@ void *read_socket(void *args){
 					if (s_args->log_fd >= 0){
 						log_msg[log_idx] = '\0';
 						pthread_mutex_lock(&log_mutex);
-						log_to_file("RECVD", s_args->log_fd, log_msg);
+						log_to_file("RECEIVED", s_args->log_fd, log_msg);
 						pthread_mutex_unlock(&log_mutex);
 						bzero(log_msg, BUF_SIZE);
 						log_idx = 0;
@@ -135,6 +180,7 @@ void *read_socket(void *args){
 					break;
 			}
 		}
+		bzero(buf, BUF_SIZE);
 	}
 
 	exit(1);
@@ -149,6 +195,8 @@ int main(int argc, char *argv[]){
 	setup_terminal();
 
 	parse_options(argc, argv);
+
+	if (encrypt_flag == 1) setup_encryption();
 
 	struct sockaddr_in serv_addr;
 	struct hostent *server;
@@ -190,7 +238,10 @@ int main(int argc, char *argv[]){
 	//in the main thread we read from the keyboard and write to the socket
 	char buf[BUF_SIZE];
 	int n_bytes;
+	bzero(buf, BUF_SIZE);
+
 	char log_msg[BUF_SIZE];
+	bzero(log_msg, BUF_SIZE);
 	int log_idx = 0;
 	while ((n_bytes = read(STDIN_FILENO, buf, BUF_SIZE)) > 0){
 		for (int i = 0; i < n_bytes; i++){
@@ -199,7 +250,11 @@ int main(int argc, char *argv[]){
 				//Map <cr> or <lf>
 				case '\r':
 				case '\n':
-					write(sock_fd, "\n", 1);
+					;
+					char new_line = '\n';
+					if (encrypt_flag == 1) encrypt(&new_line, 1);
+					write(sock_fd, &new_line, 1);
+
 					if (log_fd >= 0){
 						log_msg[log_idx] = '\0';
 						pthread_mutex_lock(&log_mutex);
@@ -218,15 +273,23 @@ int main(int argc, char *argv[]){
 					exit(0);
 				default:
 					//Write the character out to STDOUT in the kb process
-					write(sock_fd, buf + i, 1);
+					write(STDOUT_FILENO, buf + i, 1);
+
 					if (log_fd >= 0){
 						log_msg[log_idx] = c_out;
 						log_idx++;
 					}
-					write(STDOUT_FILENO, buf + i, 1);
+
+					if (encrypt_flag == 1){
+						encrypt(buf + i , 1);
+					}
+					
+					write(sock_fd, buf + i, 1);
+					
 					break;
 			}
 		}
+		bzero(buf, BUF_SIZE);
 	}
 	exit(0);
 
