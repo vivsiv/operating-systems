@@ -1,19 +1,4 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <termios.h>
-#include <getopt.h>
-#include <string.h>
-#include <signal.h>
-#include <pthread.h>
-#include <signal.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <netdb.h>
-#include <fcntl.h>
-#include <mcrypt.h>
+#include "cliserv.h"
 
 static struct termios old_term_settings;
 static int port_no;
@@ -22,18 +7,10 @@ static int encrypt_flag = 0;
 
 static int sock_fd;
 
-static MCRYPT td;
-
 pthread_mutex_t log_mutex;
 
 #define BUF_SIZE 256
 #define HOST_NAME "localhost"
-#define SEED 14
-
-void error(char *msg){
-	perror(msg);
-	exit(1);
-}
 
 //Set the terminal to non-canonical, non-echo mode
 void setup_terminal(){
@@ -68,55 +45,14 @@ void parse_options(int argc, char *argv[]){
 		switch (opt_char){
 			case 'p':
 				port_no = atoi(optarg);
-				fprintf(stdout, "Got port number: %d from options\n", port_no);
-				//sockfd = socket(AF_INET, SOCK_STREAM, 0);
 				break;
 			case 'l':
 				log_file = optarg;
 				fprintf(stdout, "Got log file: %s from options\n", log_file);
-				//log_fd = open(log_file, O_WRONLY);
 				break;
 			default:
 				break;
 		}
-	}
-}
-
-void setup_encryption(){
-	int key_size = 16; //128 bits
-	char key[key_size];
-	int key_fd;
-	int i;
-	char *IV;
-
-	key_fd = open("my.key", O_RDONLY);
-	if (key_fd < 0) error("encryption setup");
-	i = read(key_fd, key, key_size);
-	if (i != key_size) error("encryption setup");
-
-	td = mcrypt_module_open("twofish", NULL, "cfb", NULL);
-	if (td == MCRYPT_FAILED) error("encryption setup");
-
-
-	IV = malloc(mcrypt_enc_get_iv_size(td));
-	srand(SEED);
-	for (i = 0; i < mcrypt_enc_get_iv_size(td); i++) {
-    	IV[i] = rand();
-  	}
-
-	i = mcrypt_generic_init(td, key, key_size, IV);
-	if (i < 0) error("encryption setup");
-}
-
-void encrypt(char *data, int len){
-	if (mcrypt_generic(td, data, len) < 0){
-		error("encrypt");
-	}
-}
-
-void decrypt(char *data, int len){
-	if (mdecrypt_generic(td, data, len) < 0){
-		error("encrypt");
 	}
 }
 
@@ -125,13 +61,15 @@ struct read_socket_args {
 };
 
 void log_to_file(char *type, int log_fd, char *log_msg){
-	char bytes_str[BUF_SIZE];
-	bzero(bytes_str, BUF_SIZE);
-	sprintf(bytes_str, "%s %lu bytes: ", type, strlen(log_msg));
-	
-	write(log_fd, bytes_str, strlen(bytes_str));
-	write(log_fd, log_msg, strlen(log_msg));
-	write(log_fd, "\n", 1);
+	if (strlen(log_msg) > 0){
+		char bytes_str[BUF_SIZE];
+		bzero(bytes_str, BUF_SIZE);
+		sprintf(bytes_str, "%s %lu bytes: ", type, strlen(log_msg));
+		
+		write(log_fd, bytes_str, strlen(bytes_str));
+		write(log_fd, log_msg, strlen(log_msg));
+		write(log_fd, "\n", 1);
+	}
 }
 
 void *read_socket(void *args){
@@ -167,7 +105,13 @@ void *read_socket(void *args){
 				//Handle ^D
 				case '\004':
 					close(sock_fd);
-					// if (log_fd >= 0) close(log_fd);
+					if (s_args->log_fd >= 0) {
+						log_msg[log_idx] = '\0';
+						pthread_mutex_lock(&log_mutex);
+						log_to_file("RECEIVED", s_args->log_fd, log_msg);
+						pthread_mutex_unlock(&log_mutex);
+						close(s_args->log_fd);
+					}
 					exit(0);
 				//If not a special case 
 				default:
@@ -216,10 +160,11 @@ int main(int argc, char *argv[]){
 	bcopy((char *)server->h_addr, (char *)&serv_addr.sin_addr.s_addr, server->h_length);
 	serv_addr.sin_port = htons(port_no);
 
-	fprintf(stdout, "Connecting to server\n");
+	fprintf(stdout, "Connecting to server..\n");
 	if (connect(sock_fd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0){
 		error("Error connecting to host");
 	}
+	fprintf(stdout, "Connected to server, start typing commands\n");
 
 	int log_fd = -1;
 	if (log_file != NULL){
@@ -268,8 +213,13 @@ int main(int argc, char *argv[]){
 				//Handle ^D
 				case '\004':
 					pthread_cancel(read_socket_thread);
+					fprintf(stdout, "EOF received, closing socket\n");
 					close(sock_fd);
-					// if (log_fd >= 0) close(log_fd);
+					if (log_fd >= 0) {
+						log_msg[log_idx] = '\0';
+						log_to_file("SENT", log_fd, log_msg);
+						close(log_fd);
+					}
 					exit(0);
 				default:
 					//Write the character out to STDOUT in the kb process

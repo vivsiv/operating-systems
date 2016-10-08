@@ -1,32 +1,11 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <termios.h>
-#include <getopt.h>
-#include <string.h>
-#include <signal.h>
-#include <pthread.h>
-#include <signal.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <netdb.h>
-#include <fcntl.h>
-#include <mcrypt.h>
+#include "cliserv.h"
+
 
 #define BUF_SIZE 256
 #define SEED 14
 
 static int port_no;
 static int encrypt_flag = 0;
-
-static MCRYPT td;
-
-void error(char *msg){
-	perror(msg);
-	exit(1);
-}
 
 void parse_options(int argc, char *argv[]){
 	int opt_char;
@@ -40,49 +19,10 @@ void parse_options(int argc, char *argv[]){
 		switch (opt_char){
 			case 'p':
 				port_no = atoi(optarg);
-				fprintf(stdout, "Got port number: %d from options\n", port_no);
 				break;
 			default:
 				break;
 		}
-	}
-}
-
-void setup_encryption(){
-	int key_size = 16; //128 bits
-	char key[key_size];
-	int key_fd;
-	int i;
-	char *IV;
-
-	key_fd = open("my.key", O_RDONLY);
-	if (key_fd < 0) error("encryption setup");
-	i = read(key_fd, key, key_size);
-	if (i != key_size) error("encryption setup");
-
-	td = mcrypt_module_open("twofish", NULL, "cfb", NULL);
-	if (td == MCRYPT_FAILED) error("encryption setup");
-
-
-	IV = malloc(mcrypt_enc_get_iv_size(td));
-	srand(SEED);
-	for (i = 0; i < mcrypt_enc_get_iv_size(td); i++) {
-    	IV[i] = rand();
-  	}
-
-	i = mcrypt_generic_init(td, key, key_size, IV);
-	if (i < 0) error("encryption setup");
-}
-
-void encrypt(char *data, int len){
-	if (mcrypt_generic(td, data, len) < 0){
-		error("encrypt");
-	}
-}
-
-void decrypt(char *data, int len){
-	if (mdecrypt_generic(td, data, len) < 0){
-		error("decrypt");
 	}
 }
 
@@ -107,7 +47,6 @@ void *read_shell_output(void *args){
 		bzero(buf, BUF_SIZE);
 	}
 
-	fprintf(stdout, "Done reading from shell\n");
 	if (n_bytes < 0) error("read");
 
 	close(s_args->sock_fd);
@@ -134,17 +73,15 @@ int main(int argc, char *argv[]){
 	serv_addr.sin_addr.s_addr = INADDR_ANY;
 	serv_addr.sin_port = htons(port_no);
 
-	fprintf(stdout, "Binding to socket\n");
 	if (bind(sock_fd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0){
 		error("Error binding socket");
 	}
 
-	fprintf(stdout, "listening on socket\n");
+	
 	listen(sock_fd, 1);
-
-	fprintf(stdout, "accepting connections\n");
+	fprintf(stdout, "Listening on port %d for connections\n", port_no);
 	newsock_fd = accept(sock_fd, (struct sockaddr *)&cli_addr, &clilen);
-	fprintf(stdout, "connection on socket %d\n", newsock_fd);
+	fprintf(stdout, "Received Connection\n");
 
 
 	if (newsock_fd < 1) error("Error accepting connection");
@@ -158,7 +95,6 @@ int main(int argc, char *argv[]){
 
 	//shell (child) process
 	if (c_pid == 0){
-		fprintf(stdout, "created child process\n");
 		close(server_to_shell_pipe[1]);
 
 		close(STDIN_FILENO);
@@ -205,15 +141,13 @@ int main(int argc, char *argv[]){
 		}
 
      	if (n_bytes < 0) error("ERROR reading from socket");
-     	fprintf(stdout, "Done reading from socket\n");
-    	
+     	
+    	fprintf(stdout, "Closing Socket\n");
 		close(newsock_fd);
 		close(sock_fd);
+
 		close(server_to_shell_pipe[1]);
 		close(shell_to_server_pipe[0]);
 		exit(0);
-		//read from socket pipe to child process
 	}
-
-
 }
