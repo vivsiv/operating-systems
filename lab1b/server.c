@@ -120,6 +120,20 @@ int main(int argc, char *argv[]){
 		close(server_to_shell_pipe[0]);
 		close(shell_to_server_pipe[1]);
 
+		//Redirect server's input/output to the socket
+		close(STDIN_FILENO);
+		dup(newsock_fd);
+
+		close(STDOUT_FILENO);
+		dup(newsock_fd);
+
+		close(STDERR_FILENO);
+		dup(newsock_fd);
+
+		close(newsock_fd);
+
+		signal(SIGPIPE, sigpipe_handler);
+
 		//Spin up a new thread to read output back from shell
 		pthread_t shell_out_thread;
 		struct read_shell_args s_args;
