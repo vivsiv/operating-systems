@@ -4,8 +4,6 @@ static struct termios old_term_settings;
 static int port_no;
 static char *log_file;
 static int encrypt_flag = 0;
-
-static int sock_fd;
 static MCRYPT td;
 static char *IV = NULL;
 
@@ -90,6 +88,7 @@ void end_encryption(){
 }
 
 struct read_socket_args {
+	int sock_fd;
 	int log_fd;
 };
 
@@ -115,7 +114,7 @@ void *read_socket(void *args){
 	char log_msg[BUF_SIZE];
 	bzero(log_msg, BUF_SIZE);
 	int log_idx = 0;
-	while ((n_bytes = read(sock_fd, buf, BUF_SIZE - 1)) > 0){
+	while ((n_bytes = read(s_args->sock_fd, buf, BUF_SIZE - 1)) > 0){
 		if (encrypt_flag == 1){
 			decrypt(td, buf, n_bytes);
 		}
@@ -137,7 +136,7 @@ void *read_socket(void *args){
 					break;
 				//Handle ^D
 				case '\004':
-					close(sock_fd);
+					close(s_args->sock_fd);
 					if (s_args->log_fd >= 0) {
 						log_msg[log_idx] = '\0';
 						pthread_mutex_lock(&log_mutex);
@@ -160,6 +159,8 @@ void *read_socket(void *args){
 		bzero(buf, BUF_SIZE);
 	}
 
+	//EOF or read error received
+	close(s_args->sock_fd);
 	exit(1);
 
 	return NULL;
@@ -178,6 +179,7 @@ int main(int argc, char *argv[]){
 		atexit(end_encryption);
 	}
 
+	int sock_fd;
 	struct sockaddr_in serv_addr;
 	struct hostent *server;
 
@@ -213,6 +215,7 @@ int main(int argc, char *argv[]){
 	//spin up a second thread to read from the socket and write responses back to STDOUT
 	pthread_t read_socket_thread;
 	struct read_socket_args s_args;
+	s_args.sock_fd = sock_fd;
 	s_args.log_fd = log_fd;
 	pthread_create(&read_socket_thread, NULL, read_socket, &s_args);
 
