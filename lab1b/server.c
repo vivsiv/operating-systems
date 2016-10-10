@@ -1,11 +1,10 @@
 #include "cliserv.h"
 
-
 #define BUF_SIZE 256
-#define SEED 14
 
-static int port_no;
+static int port_no = 0;
 static int encrypt_flag = 0;
+static int c_pid = -1;
 static MCRYPT td;
 static char *IV = NULL;
 
@@ -95,6 +94,10 @@ void *read_shell_output(void *args){
 	return NULL;
 }
 
+void sigpipe_handler(int signal){
+	exit(2);
+}
+
 int main(int argc, char *argv[]){
 	parse_options(argc, argv);
 
@@ -103,6 +106,7 @@ int main(int argc, char *argv[]){
 		atexit(end_encryption);
 	}
 
+	//One socket for listening, the other for accepting a connection
 	int sock_fd, newsock_fd;
 	socklen_t clilen;
 
@@ -122,39 +126,49 @@ int main(int argc, char *argv[]){
 	
 	listen(sock_fd, 1);
 	fprintf(stdout, "Listening on port %d for connections\n", port_no);
+
 	newsock_fd = accept(sock_fd, (struct sockaddr *)&cli_addr, &clilen);
 	fprintf(stdout, "Received Connection\n");
-
-
+	//Since we're only accepting one connection, we can just close the listening socket
+	close(sock_fd);
 	if (newsock_fd < 1) error("Error accepting connection");
-
+	
 	int server_to_shell_pipe[2];
 	int shell_to_server_pipe[2];
-	if (pipe(server_to_shell_pipe) < 0 || pipe(shell_to_server_pipe) < 0) error("pipe");
+	if (pipe(server_to_shell_pipe) < 0 || pipe(shell_to_server_pipe) < 0) {
+		close(newsock_fd);
+		error("pipe");
+	}
 
-	int c_pid = fork();
-	if (c_pid < 0) error("fork");
+	c_pid = fork();
+	if (c_pid < 0) {
+		close(newsock_fd);
+		error("fork");
+	}
+
+	atexit(cleanup_shell);
 
 	//shell (child) process
 	if (c_pid == 0){
 		close(server_to_shell_pipe[1]);
+		close(shell_to_server_pipe[0]);
 
 		close(STDIN_FILENO);
 		dup(server_to_shell_pipe[0]);
-
-		close(shell_to_server_pipe[0]);
+		close(server_to_shell_pipe[0]);
 
 		close(STDOUT_FILENO);
 		dup(shell_to_server_pipe[1]);
-
 		close(STDERR_FILENO);
 		dup(shell_to_server_pipe[1]);
+
+		close(shell_to_server_pipe[1]);
 
 		//exec a new shell
 		char *shell_args[2];
 		shell_args[0] = strdup("/bin/bash");
 		shell_args[1] = NULL;
-		execvp(shell_args[0], shell_args);
+		if (execvp(shell_args[0], shell_args) < 0) error("execvp shell");
 		
 	}
 	//server (parent) process

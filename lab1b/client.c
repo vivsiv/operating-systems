@@ -1,8 +1,8 @@
 #include "cliserv.h"
 
 static struct termios old_term_settings;
-static int port_no;
-static char *log_file;
+static int port_no = 0;
+static char *log_file = NULL;
 static int encrypt_flag = 0;
 static MCRYPT td;
 static char *IV = NULL;
@@ -168,9 +168,9 @@ void *read_socket(void *args){
 
 
 int main(int argc, char *argv[]){
-	atexit(cleanup_terminal);
-
 	setup_terminal();
+
+	atexit(cleanup_terminal);
 
 	parse_options(argc, argv);
 
@@ -215,7 +215,9 @@ int main(int argc, char *argv[]){
 	struct read_socket_args s_args;
 	s_args.sock_fd = sock_fd;
 	s_args.log_fd = log_fd;
-	pthread_create(&read_socket_thread, NULL, read_socket, &s_args);
+	if (pthread_create(&read_socket_thread, NULL, read_socket, &s_args) < 0){
+		error("pthread_create");
+	}
 
 	//in the main thread we read from the keyboard and write to the socket
 	char buf[BUF_SIZE];
@@ -229,7 +231,6 @@ int main(int argc, char *argv[]){
 		for (int i = 0; i < n_bytes; i++){
 			char c_out = buf[i];
 			switch (c_out) {
-				//Map <cr> or <lf>
 				case '\r':
 				case '\n':
 					;
@@ -250,7 +251,7 @@ int main(int argc, char *argv[]){
 				//Handle ^D
 				case '\004':
 					pthread_cancel(read_socket_thread);
-					fprintf(stdout, "EOF received, closing socket\n");
+					fprintf(stdout, "^D received, closing socket\n");
 					close(sock_fd);
 					if (log_fd >= 0) {
 						log_msg[log_idx] = '\0';
@@ -259,7 +260,6 @@ int main(int argc, char *argv[]){
 					}
 					exit(0);
 				default:
-					//Write the character out to STDOUT in the kb process
 					write(STDOUT_FILENO, buf + i, 1);
 
 					if (log_fd >= 0){
@@ -278,6 +278,15 @@ int main(int argc, char *argv[]){
 		}
 		bzero(buf, BUF_SIZE);
 	}
-	exit(0);
 
+	pthread_cancel(read_socket_thread);
+	if (n_bytes == 0) fprintf(stdout, "EOF received, closing socket\n");
+	else fprintf(stdout, "Read error received, closing socket\n");
+	close(sock_fd);
+	if (log_fd >= 0) {
+		log_msg[log_idx] = '\0';
+		log_to_file("SENT", log_fd, log_msg);
+		close(log_fd);
+	}
+	exit(1);
 }
