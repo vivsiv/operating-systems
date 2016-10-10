@@ -6,6 +6,8 @@ static char *log_file;
 static int encrypt_flag = 0;
 
 static int sock_fd;
+static MCRYPT td;
+static char *IV = NULL;
 
 pthread_mutex_t log_mutex;
 
@@ -56,6 +58,37 @@ void parse_options(int argc, char *argv[]){
 	}
 }
 
+void setup_encryption(){
+	int key_size = 16; //128 bits
+	char key[key_size];
+	int key_fd;
+	int i;
+	char *IV;
+
+	key_fd = open("my.key", O_RDONLY);
+	if (key_fd < 0) error("encryption setup");
+	i = read(key_fd, key, key_size);
+	if (i != key_size) error("encryption setup");
+
+	td = mcrypt_module_open("twofish", NULL, "cfb", NULL);
+	if (td == MCRYPT_FAILED) error("encryption setup");
+
+
+	IV = malloc(mcrypt_enc_get_iv_size(td));
+	srand(SEED);
+	for (i = 0; i < mcrypt_enc_get_iv_size(td); i++) {
+    	IV[i] = rand();
+  	}
+
+	i = mcrypt_generic_init(td, key, key_size, IV);
+	if (i < 0) error("encryption setup");
+}
+
+void end_encryption(){
+	mcrypt_generic_end(td);
+	if (IV != NULL) free(IV);
+}
+
 struct read_socket_args {
 	int log_fd;
 };
@@ -84,7 +117,7 @@ void *read_socket(void *args){
 	int log_idx = 0;
 	while ((n_bytes = read(sock_fd, buf, BUF_SIZE - 1)) > 0){
 		if (encrypt_flag == 1){
-			decrypt(buf, n_bytes);
+			decrypt(td, buf, n_bytes);
 		}
 		for (int i = 0; i < n_bytes; i++){
 			char c_out = buf[i];
@@ -140,7 +173,10 @@ int main(int argc, char *argv[]){
 
 	parse_options(argc, argv);
 
-	if (encrypt_flag == 1) setup_encryption();
+	if (encrypt_flag == 1) {
+		setup_encryption(td);
+		atexit(end_encryption);
+	}
 
 	struct sockaddr_in serv_addr;
 	struct hostent *server;
@@ -197,7 +233,7 @@ int main(int argc, char *argv[]){
 				case '\n':
 					;
 					char new_line = '\n';
-					if (encrypt_flag == 1) encrypt(&new_line, 1);
+					if (encrypt_flag == 1) encrypt(td, &new_line, 1);
 					write(sock_fd, &new_line, 1);
 
 					if (log_fd >= 0){
@@ -231,7 +267,7 @@ int main(int argc, char *argv[]){
 					}
 
 					if (encrypt_flag == 1){
-						encrypt(buf + i , 1);
+						encrypt(td, buf + i , 1);
 					}
 					
 					write(sock_fd, buf + i, 1);
