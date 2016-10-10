@@ -205,11 +205,9 @@ int main(int argc, char *argv[]){
 	fprintf(stdout, "Connected to server, start typing commands\n");
 
 	int log_fd = -1;
-	if (log_file != NULL){
-		log_fd = open(log_file, O_WRONLY);
-	}
-	if (log_fd < 0){
-		fprintf(stderr, "ERROR: unable to open log file: %s\n", log_file);
+	if (log_file != NULL) {
+		log_fd = open(log_file, O_CREAT | O_WRONLY | O_APPEND, S_IRWXU | S_IXGRP);
+		if (log_fd < 0) fprintf(stdout, "Error opening log file: %s\n", log_file);
 	}
 
 	//spin up a second thread to read from the socket and write responses back to STDOUT
