@@ -65,7 +65,6 @@ void cleanup_shell(){
 
 struct read_shell_args {
 	int shell_to_server_pipe;
-	int sock_fd;
 };
 
 void *read_shell_output(void *args){
@@ -80,15 +79,18 @@ void *read_shell_output(void *args){
 		if (encrypt_flag == 1){
 			encrypt(td, buf, n_bytes);
 		}
-		write(s_args->sock_fd, buf, n_bytes);
+		write(STDOUT_FILENO, buf, n_bytes);
 		bzero(buf, BUF_SIZE);
 	}
 
-	if (n_bytes < 0) error("read");
-
-	close(s_args->sock_fd);
-	//on EOF exit with code 1
-	exit(1);
+	//EOF received from shell
+	if (n_bytes == 0) {
+		exit(2);
+	}
+	//Read error
+	else {
+		exit(1);
+	}
 
 	return NULL;
 }
@@ -178,30 +180,28 @@ int main(int argc, char *argv[]){
 		pthread_t shell_out_thread;
 		struct read_shell_args s_args;
 		s_args.shell_to_server_pipe = shell_to_server_pipe[0];
-		s_args.sock_fd = newsock_fd;
-		pthread_create(&shell_out_thread, NULL, read_shell_output, &s_args);
-
+		if (pthread_create(&shell_out_thread, NULL, read_shell_output, &s_args) < 0) {
+			error("pthread_create");
+		}
 
 		int n_bytes;
 		char buf[BUF_SIZE];
 		bzero(buf, BUF_SIZE);
 
-		while ((n_bytes = read(newsock_fd, buf, BUF_SIZE - 1) > 0)){
+		while ((n_bytes = read(STDIN_FILENO, buf, BUF_SIZE - 1) > 0)){
 			if (encrypt_flag == 1){
 				decrypt(td, buf, n_bytes);
 			}
 			write(server_to_shell_pipe[1], buf, n_bytes);
 			bzero(buf, BUF_SIZE);
 		}
-
-     	if (n_bytes < 0) error("ERROR reading from socket");
-     	
-    	fprintf(stdout, "Closing Socket\n");
-		close(newsock_fd);
-		close(sock_fd);
-
+     	 
 		close(server_to_shell_pipe[1]);
-		close(shell_to_server_pipe[0]);
-		exit(0);
+		close(shell_to_server_pipe[0]);    	
+
+    	fprintf(stdout, "EOF received: closing connection\n");
+		exit(1);
 	}
+
+	exit(0);
 }
