@@ -21,4 +21,4 @@ clean:
 	rm server
 
 dist:
-	tar pczf lab1a-303652195.tar.gz server.c client.c Makefile README
+	tar pczf lab1b-303652195.tar.gz cliserv.h server.c client.c Makefile README

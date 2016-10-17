@@ -1,2 +1,69 @@
 Vivek Sivakumar
 UID: 303652195
+
+Design:
+	My design is largely the incorporation of part 1a and the socket programming tutorial given in the guidelines.
+	Some unique features:
+	    - The client has 2 threads: one for reading from the keyboard, one for reading from the socket
+	    - The server's parent process has 2 threads: one for reading from the socket and writing to the shell,
+	    	one for reading from the shell and writing to the socket.
+		- The server only accepts one connection, and closes its listening socket upon acquiring a connection.
+		- When writing to the log file the client buffers data up until it reads a newline (either from the 
+			keyboard or the socket) then writes to the log file. If it receives an interrupt it logs whatever is in the
+			buffer at the time.
+		- To guarantee that there would be no race conditions between the two client threads when writing to the I surrounded any
+			writes to the log file with a lock.
+		- I used twofish encryption, similar to the example in the libmcrypt man page.
+
+
+Testing:
+  To test the program I ran both the client and the server programs then sent commands to the server and viewed the response in the log file
+
+  One test sequence:
+  		> ./server --port=8080 --encrypt
+  		> ./client --port=8080 --log=log.txt --encrypt
+  		> asdasd
+  		> echo hello world | wc
+  		> ls -a
+  		> asdds^D
+
+  Resulting Log File:
+		[vivek@lnxsrv09 ~/Development/cs_111/lab1b]$ cat log.txt
+		SENT 6 bytes: asdasd
+		RECEIVED 44 bytes: /bin/bash: line 1: asdasd: command not found
+		SENT 21 bytes: echo hello world | wc
+		RECEIVED 23 bytes:       1       2      12
+		SENT 5 bytes: ls -a
+		RECEIVED 1 bytes: .
+		RECEIVED 2 bytes: ..
+		RECEIVED 6 bytes: client
+		RECEIVED 8 bytes: client.c
+		RECEIVED 9 bytes: cliserv.h
+		RECEIVED 7 bytes: log.txt
+		RECEIVED 8 bytes: Makefile
+		RECEIVED 6 bytes: my.key
+		RECEIVED 6 bytes: README
+		RECEIVED 6 bytes: server
+		RECEIVED 8 bytes: server.c
+		SENT 5 bytes: asdds
+
+  To check that encryption was working I would run encryption on just one of the programs
+  		> ./server --port=8080
+  		> ../client --port=8080 --log=log2.txt --encrypt
+  		> asasdsd
+		> echo whe
+  Resulting Log File:
+  		[vivek@lnxsrv09 ~/Development/cs_111/lab1b]$ cat log2.txt
+		SENT 7 bytes: asasdsd
+		SENT 9 bytes: echo whe
+  This makes sense because the server is not decrypting so it's sending garbage to the shell process, which returns nothing.
+
+  If i swap this and have just the server encrypt I get the same result which makes sense as the server is decrypting unencrypted data
+  into garbage and passing it to the shell process.
+
+References:
+socket programming
+http://www.cs.rpi.edu/~moorthy/Courses/os98/Pgms/socket.html
+
+locks for pthreads
+https://docs.oracle.com/cd/E19683-01/806-6867/sync-12/index.html
