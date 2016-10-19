@@ -32,10 +32,13 @@ clean_list:
 	rm lab2_list
 	rm lab2_list.csv
 
-clean_charts:
+clean_add_charts:
 	rm lab2_add-*
 
-test:
+clean_list_charts:
+	rm lab2_list-*
+
+test_add:
 	# Run your program for ranges of threads (2, 4, 8, 12) and iterations (100, 1000, 10000, 100000) 
 	./lab2_add --iterations=100 --threads=2 >> lab2_add.csv
 	./lab2_add --iterations=100 --threads=4 >> lab2_add.csv
@@ -159,7 +162,169 @@ test:
 	./lab2_add --sync=s --iterations=1000 --threads=8 >> lab2_add.csv
 	./lab2_add --sync=s --iterations=1000 --threads=12 >> lab2_add.csv
 
+test_list:
+	# Run your program with a single thread, and increasing numbers of iterations (10, 100, 1000, 10000, 20000), 
+	# Graph the time per operation vs the number of iterations (for --threads=1).  
+	./lab2_list --threads=1 --iterations=10 >> lab2_list.csv
+	./lab2_list --threads=1 --iterations=100 >> lab2_list.csv
+	./lab2_list --threads=1 --iterations=1000 >> lab2_list.csv
+	./lab2_list --threads=1 --iterations=10000 >> lab2_list.csv
+	./lab2_list --threads=1 --iterations=20000 >> lab2_list.csv
+
+	# Run your program and see how many parallel threads (2,4,8,12) and iterations (10,100,1000) it takes to fairly consistently demonstrate a problem.  
+	./lab2_list --threads=2 --iterations=10 >> lab2_list.csv
+	./lab2_list --threads=4 --iterations=10 >> lab2_list.csv
+	./lab2_list --threads=8 --iterations=10 >> lab2_list.csv
+	./lab2_list --threads=12 --iterations=10 >> lab2_list.csv
+
+	./lab2_list --threads=2 --iterations=100 >> lab2_list.csv
+	./lab2_list --threads=4 --iterations=100 >> lab2_list.csv
+	./lab2_list --threads=8 --iterations=100 >> lab2_list.csv
+	./lab2_list --threads=12 --iterations=100 >> lab2_list.csv
+
+	./lab2_list --threads=2 --iterations=1000 >> lab2_list.csv
+	./lab2_list --threads=4 --iterations=1000 >> lab2_list.csv
+	./lab2_list --threads=8 --iterations=1000 >> lab2_list.csv
+	./lab2_list --threads=12 --iterations=1000 >> lab2_list.csv
+
+	# Then run it again using various combinations of yield options and see how many threads (2,4,8,12) and iterations (2,4,8,16,32)
+	# conflicts between inserts (--yield=i)
+	# conflicts between deletes (--yield=d)
+	# conflicts between inserts and lookups (--yield=il)
+	# conflicts between deletes and lookups (--yield=dl)
+	./lab2_list --yield=i --threads=2 --iterations=2 >> lab2_list.csv
+	./lab2_list --yield=i --threads=4 --iterations=2 >> lab2_list.csv
+	./lab2_list --yield=i --threads=8 --iterations=2 >> lab2_list.csv
+	./lab2_list --yield=i --threads=12 --iterations=2 >> lab2_list.csv
+
+	./lab2_list --yield=d --threads=2 --iterations=2 >> lab2_list.csv
+	./lab2_list --yield=d --threads=4 --iterations=2 >> lab2_list.csv
+	./lab2_list --yield=d --threads=8 --iterations=2 >> lab2_list.csv
+	./lab2_list --yield=d --threads=12 --iterations=2 >> lab2_list.csv
+
+	./lab2_list --yield=il --threads=2 --iterations=2 >> lab2_list.csv
+	./lab2_list --yield=il --threads=4 --iterations=2 >> lab2_list.csv
+	./lab2_list --yield=il --threads=8 --iterations=2 >> lab2_list.csv
+	./lab2_list --yield=il --threads=12 --iterations=2 >> lab2_list.csv
+
+	./lab2_list --yield=dl --threads=2 --iterations=2 >> lab2_list.csv
+	./lab2_list --yield=dl --threads=4 --iterations=2 >> lab2_list.csv
+	./lab2_list --yield=dl --threads=8 --iterations=2 >> lab2_list.csv
+	./lab2_list --yield=dl --threads=12 --iterations=2 >> lab2_list.csv
+
+	./lab2_list --yield=i --threads=2 --iterations=4 >> lab2_list.csv
+	./lab2_list --yield=i --threads=4 --iterations=4 >> lab2_list.csv
+	./lab2_list --yield=i --threads=8 --iterations=4 >> lab2_list.csv
+	./lab2_list --yield=i --threads=12 --iterations=4 >> lab2_list.csv
+
+	./lab2_list --yield=d --threads=2 --iterations=4 >> lab2_list.csv
+	./lab2_list --yield=d --threads=4 --iterations=4 >> lab2_list.csv
+	./lab2_list --yield=d --threads=8 --iterations=4 >> lab2_list.csv
+	./lab2_list --yield=d --threads=12 --iterations=4 >> lab2_list.csv
+
+	./lab2_list --yield=il --threads=2 --iterations=4 >> lab2_list.csv
+	./lab2_list --yield=il --threads=4 --iterations=4 >> lab2_list.csv
+	./lab2_list --yield=il --threads=8 --iterations=4 >> lab2_list.csv
+	./lab2_list --yield=il --threads=12 --iterations=4 >> lab2_list.csv
+
+	./lab2_list --yield=dl --threads=2 --iterations=4 >> lab2_list.csv
+	./lab2_list --yield=dl --threads=4 --iterations=4 >> lab2_list.csv
+	./lab2_list --yield=dl --threads=8 --iterations=4 >> lab2_list.csv
+	./lab2_list --yield=dl --threads=12 --iterations=4 >> lab2_list.csv
+
+
+	./lab2_list --yield=i --threads=2 --iterations=8 >> lab2_list.csv
+	./lab2_list --yield=i --threads=4 --iterations=8 >> lab2_list.csv
+	./lab2_list --yield=i --threads=8 --iterations=8 >> lab2_list.csv
+	./lab2_list --yield=i --threads=12 --iterations=8 >> lab2_list.csv
+
+	./lab2_list --yield=d --threads=2 --iterations=8 >> lab2_list.csv
+	./lab2_list --yield=d --threads=4 --iterations=8 >> lab2_list.csv
+	./lab2_list --yield=d --threads=8 --iterations=8 >> lab2_list.csv
+	./lab2_list --yield=d --threads=12 --iterations=8 >> lab2_list.csv
+
+	./lab2_list --yield=il --threads=2 --iterations=8 >> lab2_list.csv
+	./lab2_list --yield=il --threads=4 --iterations=8 >> lab2_list.csv
+	./lab2_list --yield=il --threads=8 --iterations=8 >> lab2_list.csv
+	./lab2_list --yield=il --threads=12 --iterations=8 >> lab2_list.csv
+
+	./lab2_list --yield=dl --threads=2 --iterations=8 >> lab2_list.csv
+	./lab2_list --yield=dl --threads=4 --iterations=8 >> lab2_list.csv
+	./lab2_list --yield=dl --threads=8 --iterations=8 >> lab2_list.csv
+	./lab2_list --yield=dl --threads=12 --iterations=8 >> lab2_list.csv
+
+	./lab2_list --yield=i --threads=2 --iterations=16 >> lab2_list.csv
+	./lab2_list --yield=i --threads=4 --iterations=16 >> lab2_list.csv
+	./lab2_list --yield=i --threads=8 --iterations=16 >> lab2_list.csv
+	./lab2_list --yield=i --threads=12 --iterations=16 >> lab2_list.csv
+
+	./lab2_list --yield=d --threads=2 --iterations=16 >> lab2_list.csv
+	./lab2_list --yield=d --threads=4 --iterations=16 >> lab2_list.csv
+	./lab2_list --yield=d --threads=8 --iterations=16 >> lab2_list.csv
+	./lab2_list --yield=d --threads=12 --iterations=16 >> lab2_list.csv
+
+	./lab2_list --yield=il --threads=2 --iterations=16 >> lab2_list.csv
+	./lab2_list --yield=il --threads=4 --iterations=16 >> lab2_list.csv
+	./lab2_list --yield=il --threads=8 --iterations=16 >> lab2_list.csv
+	./lab2_list --yield=il --threads=12 --iterations=16 >> lab2_list.csv
+
+	./lab2_list --yield=dl --threads=2 --iterations=16 >> lab2_list.csv
+	./lab2_list --yield=dl --threads=4 --iterations=16 >> lab2_list.csv
+	./lab2_list --yield=dl --threads=8 --iterations=16 >> lab2_list.csv
+	./lab2_list --yield=dl --threads=12 --iterations=16 >> lab2_list.csv
+
+	./lab2_list --yield=i --threads=2 --iterations=32 >> lab2_list.csv
+	./lab2_list --yield=i --threads=4 --iterations=32 >> lab2_list.csv
+	./lab2_list --yield=i --threads=8 --iterations=32 >> lab2_list.csv
+	./lab2_list --yield=i --threads=12 --iterations=32 >> lab2_list.csv
+
+	./lab2_list --yield=d --threads=2 --iterations=32 >> lab2_list.csv
+	./lab2_list --yield=d --threads=4 --iterations=32 >> lab2_list.csv
+	./lab2_list --yield=d --threads=8 --iterations=32 >> lab2_list.csv
+	./lab2_list --yield=d --threads=12 --iterations=32 >> lab2_list.csv
+
+	./lab2_list --yield=il --threads=2 --iterations=32 >> lab2_list.csv
+	./lab2_list --yield=il --threads=4 --iterations=32 >> lab2_list.csv
+	./lab2_list --yield=il --threads=8 --iterations=32 >> lab2_list.csv
+	./lab2_list --yield=il --threads=12 --iterations=32 >> lab2_list.csv
+
+	./lab2_list --yield=dl --threads=2 --iterations=32 >> lab2_list.csv
+	./lab2_list --yield=dl --threads=4 --iterations=32 >> lab2_list.csv
+	./lab2_list --yield=dl --threads=8 --iterations=32 >> lab2_list.csv
+	./lab2_list --yield=dl --threads=12 --iterations=32 >> lab2_list.csv
+
+
+	# (--sync=m) and (--sync=s).  Using your --yield options, demonstrate these protections seems eliminate all problems, even for large numbers of threads (12) and iterations (32).
+	./lab2_list --sync=m --yield=i --threads=12 --iterations=32 >> lab2_list.csv
+	./lab2_list --sync=m --yield=d --threads=12 --iterations=32 >> lab2_list.csv
+	./lab2_list --sync=m --yield=il --threads=12 --iterations=32 >> lab2_list.csv
+	./lab2_list --sync=m --yield=dl --threads=12 --iterations=32 >> lab2_list.csv
+
+	./lab2_list --sync=s --yield=i --threads=12 --iterations=32 >> lab2_list.csv
+	./lab2_list --sync=s --yield=d --threads=12 --iterations=32 >> lab2_list.csv
+	./lab2_list --sync=s --yield=il --threads=12 --iterations=32 >> lab2_list.csv
+	./lab2_list --sync=s --yield=dl --threads=12 --iterations=32 >> lab2_list.csv
+
+
+	# Choose an appropriate number of iterations (e.g. 1000) and rerun your program without the yields. 
+	# Run the protected methods for a wide range of numbers of threads (1, 2, 4, 8, 12, 16, 24).  
+	# Graph the (corrected) per operation times (for each of the three synchronization options: unprotected, mutex, spin)
+	./lab2_list --sync=m --threads=1 --iterations=1000 >> lab2_list.csv
+	./lab2_list --sync=m --threads=2 --iterations=1000 >> lab2_list.csv
+	./lab2_list --sync=m --threads=4 --iterations=1000 >> lab2_list.csv
+	./lab2_list --sync=m --threads=8 --iterations=1000 >> lab2_list.csv
+	./lab2_list --sync=m --threads=12 --iterations=1000 >> lab2_list.csv
+	./lab2_list --sync=m --threads=16 --iterations=1000 >> lab2_list.csv
+	./lab2_list --sync=m --threads=24 --iterations=1000 >> lab2_list.csv
+
+	./lab2_list --sync=s --threads=1 --iterations=1000 >> lab2_list.csv
+	./lab2_list --sync=s --threads=2 --iterations=1000 >> lab2_list.csv
+	./lab2_list --sync=s --threads=4 --iterations=1000 >> lab2_list.csv
+	./lab2_list --sync=s --threads=8 --iterations=1000 >> lab2_list.csv
+	./lab2_list --sync=s --threads=12 --iterations=1000 >> lab2_list.csv
+	./lab2_list --sync=s --threads=16 --iterations=1000 >> lab2_list.csv
+	./lab2_list --sync=s --threads=24 --iterations=1000 >> lab2_list.csv
 
 
 dist:
-	tar pczf lab2a-303652195.tar.gz lab2_add.c Makefile README
+	tar pczf lab2a-303652195.tar.gz lab2_add.c lab2_list.c SortedList.h SortedList.c lab2_add-* lab2_list-* Makefile README

@@ -50,11 +50,21 @@ any threads that are in the critical section to finish before they can execute, 
 
 Why are spin-locks so expensive for large numbers of threads?
 Spin locks are very expensive as the number of threads increases because each thread competing for the lock wastes a time slice
-spinning. If there are just 2 threads this is not a problem as the thread with the lock will do the work and the thread without will spin and waste its slice. If there are 12 threads then 11 threads without the lock are spinning and wasting slices while the lone thread with the lock is
-getting time slices less frequently to do work that might actually release the lock.
+spinning. If there are just 2 threads this is not a problem as the thread with the lock will do the work and the thread without will spin and waste its slice. If there are 12 threads then 11 threads without the lock are spinning and wasting slices while the lone thread with the lock is getting time slices less frequently to do work that might actually release the lock.
 
 QUESTION 2.2.1 - scalability of Mutex
 Compare the variation in time per protected operation vs the number of threads (for mutex-protected operations) in Part-1 and Part-2, commenting on similarities/differences and offering explanations for them.
+The cost of mutexes increases more or less linearly with the number of threads for both add operations and linked list operations which
+makes sense because more threads contesting for the lock increases cost for both applications. The raw cost of using mutexes is much higher
+for linked list operations than for add operations which makes sense because the linked list operations that are being locked require more
+time as the size of the list grows. Interestingly the length adjusted cost was much lower for linked list operations than for add operations,
+I wasn't exactly sure why this is as I would expect both to be similar. One possible explanation is that the raw cost of mutexes on linked list operations doesn't begin to grow linearly with the number of iterations until after 1000 iterations and these tests were done using 1000
+iterations so divding the cost by 4 might be underestimating the true serialization cost.
+
 
 QUESTION 2.2.2 - scalability of spin locks
 Compare the variation in time per protected operation vs the number of threads for Mutex vs Spin locks, commenting on similarities/differences and offering explanations for them.
+Mutexes and spin locks appear to have very similar costs per thread going up to 32 threads, in fact spin locks managed to outperform mutexes
+up to 32 threads which is very suprising because high numbers of threads are where spin lock peformance degrades rapidly. My instint is that
+1000 iterations is not enough to see the rapid degradation in spinlock performance because even in part 1 the two had very similar performance
+numbers until they ventured apart at 16 threads. I'm also not sure about the lnxsrv09 server's specs, but if it is a multi-core processor this would explain the relative efficiency of spinlocks as they thrive more on multi-core processors.
