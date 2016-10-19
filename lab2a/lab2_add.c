@@ -60,6 +60,7 @@ void *iterative_add(void *args){
 		(*(a_args->add_fun))(a_args->pointer, -1, a_args->opt_yield);
 	}
 
+	free(a_args);
 	pthread_exit(NULL);
 }
 
@@ -85,21 +86,18 @@ void parse_options(int argc, char *argv[], struct options_args *o_args){
 		switch (opt_char){
 			case 't':
 				*(o_args->threads_ptr) = atoi(optarg);
-				// fprintf(stdout, "Got num_threads: %d from options\n", *threads_ptr);
 				break;
 			case 'i':
 				*(o_args->iterations_ptr) = atoi(optarg);
-				// fprintf(stdout, "Got num_iterations: %d from options\n", *iterations_ptr);
 				break;
 			case 's':
 				switch(*optarg){
 					case 'm':
-						// fprintf(stdout, "got sync=m\n");
+						pthread_mutex_init(&mutex,NULL);
 						*(o_args->add_fun_ptr) = &add_mutex;
 						o_args->syncOpt = 'm';
 						break;
 					case 's':
-						// fprintf(stdout, "got sync=s\n");
 						*(o_args->add_fun_ptr) = &add_spinlock;
 						o_args->syncOpt = 's';
 						break;
@@ -168,13 +166,14 @@ int main(int argc, char *argv[]){
 	struct timespec start, finish;
 	if (clock_gettime(CLOCK_MONOTONIC, &start) < 0) error("clock_gettime");
 
+	struct add_args *a_args;
 	for (int i = 0; i < num_threads; i++){
-		struct add_args a_args;
-		a_args.pointer = &count;
-		a_args.iterations = num_iterations;
-		a_args.opt_yield = opt_yield;
-		a_args.add_fun = add_fun;
-		if (pthread_create(&threads[i], NULL, iterative_add, &a_args) < 0){
+		a_args = (struct add_args *) malloc(sizeof(struct add_args));
+		a_args->pointer = &count;
+		a_args->iterations = num_iterations;
+		a_args->opt_yield = opt_yield;
+		a_args->add_fun = add_fun;
+		if (pthread_create(&threads[i], NULL, iterative_add, a_args) < 0){
 			error("pthread_create");
 		}
 	}
