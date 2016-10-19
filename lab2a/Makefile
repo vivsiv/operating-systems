@@ -4,15 +4,33 @@ CFLAGS=-Wall -pthread
 
 GDBFLAGS=-g -Wall -pthread
 
-# DEPS=cliserv.h
-
 all:
 	$(CC) $(CFLAGS) lab2_add.c -o lab2_add
 	touch lab2_add.csv
+	$(CC) $(CFLAGS) lab2_list.c SortedList.c -o lab2_list
+	touch lab2_list.csv
+
+add:
+	$(CC) $(CFLAGS) lab2_add.c -o lab2_add
+	touch lab2_add.csv
+
+list:
+	$(CC) $(CFLAGS) lab2_list.c SortedList.c -o lab2_list
+	touch lab2_list.csv
 	
 clean:
 	rm lab2_add
 	rm lab2_add.csv
+	rm lab2_list
+	rm lab2_list.csv
+
+clean_add:
+	rm lab2_add
+	rm lab2_add.csv
+
+clean_list:
+	rm lab2_list
+	rm lab2_list.csv
 
 clean_charts:
 	rm lab2_add-*
