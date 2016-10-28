@@ -73,12 +73,13 @@ void *iterative_list_ops(void *args){
 				if (clock_gettime(CLOCK_MONOTONIC, &start) < 0) error("clock_gettime");
 
 				mutex_lock(&(l_args->locks->mutex));
-				SortedList_insert(l_args->sub_list, &(l_args->elems[i]));
-				mutex_unlock(&(l_args->locks->mutex));
 
 				if (clock_gettime(CLOCK_MONOTONIC, &finish) < 0) error("clock_gettime");
 				l_args->lock_time += elapsed_time(&start, &finish);
 
+				SortedList_insert(l_args->sub_list, &(l_args->elems[i]));
+
+				mutex_unlock(&(l_args->locks->mutex));
 				break;
 			case SPIN:
 				spin_lock(&(l_args->locks->spin_lock));
@@ -99,12 +100,13 @@ void *iterative_list_ops(void *args){
 			if (clock_gettime(CLOCK_MONOTONIC, &start) < 0) error("clock_gettime");
 
 			mutex_lock(&(l_args->locks->mutex));
-			SortedList_length(l_args->sub_list);
-			mutex_unlock(&(l_args->locks->mutex));
 
 			if (clock_gettime(CLOCK_MONOTONIC, &finish) < 0) error("clock_gettime");
 			l_args->lock_time += elapsed_time(&start, &finish);
 
+			SortedList_length(l_args->sub_list);
+
+			mutex_unlock(&(l_args->locks->mutex));
 			break;
 		case SPIN:
 			spin_lock(&(l_args->locks->spin_lock));
@@ -127,12 +129,13 @@ void *iterative_list_ops(void *args){
 				if (clock_gettime(CLOCK_MONOTONIC, &start) < 0) error("clock_gettime");
 
 				mutex_lock(&(l_args->locks->mutex));
-				found = SortedList_lookup(l_args->sub_list, (l_args->elems[i]).key);
-				SortedList_delete(found);
-				mutex_unlock(&(l_args->locks->mutex));
-
 				if (clock_gettime(CLOCK_MONOTONIC, &finish) < 0) error("clock_gettime");
 				l_args->lock_time += elapsed_time(&start, &finish);
+
+				found = SortedList_lookup(l_args->sub_list, (l_args->elems[i]).key);
+				SortedList_delete(found);
+
+				mutex_unlock(&(l_args->locks->mutex));
 				break;
 			case SPIN:
 				spin_lock(&(l_args->locks->spin_lock));
