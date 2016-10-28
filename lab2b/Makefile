@@ -203,7 +203,7 @@ graphs:
 	/u/cs/grad/zhou/iloveos/gnuplot lab2b.gp
 
 tarball:
-	tar pczf lab2b-303652195.tar.gz lab2_add.c lab2_list.c SortedList.h SortedList.c *.png Makefile README
+	tar pczf lab2b-303652195.tar.gz lab2_add.c lab2_list.c SortedList.h SortedList.c lab2b.gp *.png Makefile README
 
 clean:
 	rm lab2_list
