@@ -1,2 +1,59 @@
 Vivek Sivakumar
 UID: 303652195
+
+All work was done on lnxsrv09
+
+QUESTION 2.3.1 - Cycles in the basic implementation:
+Where do you believe most of the cycles are spent in the 1 and 2-thread tests (for both add and list)?  Why do you believe these to be the most expensive parts of the code?
+
+For one and two thread tests for add and list I believe most of the time is spent performing either the add or the list operation. Since there is at most one thread contending for the lock at a time, the time spent waiting for spinning for a lock is very low for 2 threads and 0 for 1 thread. We can actually see the throughput dip just a bit from 1 to 2 threads on all synchronization primitives, suggesting this drop is the performance penalty for lock contention amongst 2 threads. Since this drop is relatively small it's clear that at both one and two threads the operations inside the critical section dominate the execution time.
+
+Where do you believe most of the time/cycles are being spent in the high-thread spin-lock tests?
+
+Most of the time in the high-thread spin lock tests is being spent by threads without the lock spinning and waiting for the spin lock. Since there is only one lock for the counter and one lock for the entire list at any time there are n-1 threads spinning for the lock and as n increases this number increases to amounts that dominate the execution time.
+
+Where do you believe most of the time/cycles are being spent in the high-thread mutex tests?
+
+Most of the time/cycles in the high-thread mutex tests should be spent performing the critical section because threads are going to sleep when they do not have access to the lock. For add operations this seems to be the case because at high thread counts the mutex begins to scale much better than the spin lock. However for list operations the mutex performs about as poorly as the spin locks. I have 2 possible theories for this: one sleeping and waking threads involves context switches which take time, and two the linux servers have 32 cores and spin locks perform much better on multi core machines because theres a higher chance for the thread with the lock to be running on a core. I tested theory two by running the tests on my 8 core macbook pro and saw disastrous performance with spin locks which seems to corroborate my theory.
+	-- I included the mac performance as lab2b_1_mac.png it timed out for spin locks on 24 threads
+
+QUESTION 2.3.2 - Execution Profiling:
+Where (what lines of code) are consuming most of the cycles when the spin-lock version of the list exerciser is run with a large number of threads?
+The call to spin_lock() which I make to acquire the spin lock uses by far the most cycles, it consumed 269 of 322 or 83.5% of profiling samples.
+
+Why does this operation become so expensive with large numbers of threads?
+This operation becomes expensive because spin_locks force n-1 threads to burn a time slice
+spinning for the spin lock. So over the execution of the whole program n-1 threads spinning every n
+time slices causes spin_lock() to dominate the cycle count.
+
+QUESTION 2.3.3 - Mutex Wait Time:
+Look at the average time per operation (vs # threads) and the average wait-for-mutex time (vs #threads). 
+
+Why does the average lock-wait time rise so dramatically with the number of contending threads?
+Because I am using the system wide monotonic clock to measure time that has elapsed before getting the lock and after getting the lock, the lock wait time increases even if the thread is sleeping. So as the number of threads increases a given thread will be asleep much longer because it has a 1/N chance of getting the lock.
+
+Why does the completion time per operation rise (less dramatically) with the
+number of contending threads?
+Since there is always one thread running and executing operations the process as a whole is 
+completing execution, we don't really care which thread is doing the work because all threads
+need to finish their work. The rise in completion time is due to the fact the we are adding more
+operations every time we add a thread and the addition of a thread doesn't fully mitigate the increased number of ops because it must acquire locks and context switch. 
+
+How is it possible for the wait time per operation to go up faster (or higher) than the completion time per operation?
+Because completion time per operation is a process level measurement it really doesn't care which
+thread is executing as long as some thread is doing work and all threads finish their work. However the wait time for a lock is very thread specific so as the number of threads increases lock contention skyrockets. The difference is really due to the granularity on which both measurements are taken. Avg time per operation is measuring the performance of the pool of threads as a whole while average lock time is measuring each thread's view of the work.
+
+
+QUESTION 2.3.4 - Performance of Partitioned Lists
+Explain the change in performance of the synchronized methods as a function of the number of lists.
+Should the throughput continue increasing as the number of lists is further increased?  If not, explain why not.
+
+The throughput increases because we've increased the number of locks and this decreased the contention
+for each individual lock. On a multi-core machine there can be n_locks threads executing at a time on a sublist as opposed to one thread at a time working on the entire list. The throughput can't increase forever though as the number of lists increases because eventually the list size will just go to 1 and you have a lock for each element. The sublist strategy gets no more efficient than that. Also increasing the number of locks increases overall locking overhead so I'd actually expect to see a max throughput for a given number of threads.
+
+It seems reasonable to suggest the throughput of an N-way partitioned list should be equivalent to the throughput of a single list with fewer (1/N) threads.  Does this appear to be true in the above curves?  If not, explain why not.
+
+It appears that and N way partitioned list with N threads has better throughput than 1 list with 1 thread. I actually think this makes sense because if there are N lists and N threads there is no lock contention, there is the benefit of multi-core parallelism, and each thread is operating on a shorter list. However if you increase the number of threads beyond the number of lists then lock contention becomes a factor, parallelism decreases and throughput quickly falls close to that of 1 list and 1 thread.
+
+
+

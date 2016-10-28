@@ -1,24 +1,10 @@
 CC=gcc
 
-CFLAGS=-Wall -pthread
-
-PROF_FLAGS=-g -Wall -pthread -lprofiler
-
-GDB_FLAGS=-g -Wall -pthread
+CFLAGS=-g -Wall -pthread
 
 build:
 	$(CC) $(CFLAGS) lab2_list.c SortedList.c -o lab2_list
 	$(CC) $(CFLAGS) lab2_add.c -o lab2_add
-
-build_list:
-	$(CC) $(CFLAGS) lab2_list.c SortedList.c -o lab2_list
-
-build_add:
-	$(CC) $(CFLAGS) lab2_add.c -o lab2_add
-
-build_profile:
-	# $(CC) $(PROF_FLAGS) lab2_list.c SortedList.c -o lab2_list
-	# $(CC) $(GDB_FLAGS) /u/cs/grad/vivek/Development/cs_111/lab2b/gperf_bin/lib/libprofiler.a lab2_add.c -o lab2_list
 
 tests:
 	touch lab2_add.csv
@@ -208,30 +194,19 @@ tests:
 	./lab2_list --sync=s --threads=8 --lists=16 --iterations=1000 >> lab2_list.csv
 	./lab2_list --sync=s --threads=12 --lists=16 --iterations=1000 >> lab2_list.csv
 
-	# Build your program with debug symbols run the spin-lock list test (1,000 iterations 12 threads) under the profiler, and analyze the results to determine where the cycles are being spent.
-
 profile:
-	# env CPUPROFILE=/tmp/lab2_list.prof /Users/Vivek/Development/UCLA/Fall_16/CS_111/lab2b/lab2_list --sync=s --threads=12 --iterations=1000
-	# pprof /Users/Vivek/Development/UCLA/Fall_16/CS_111/lab2b/lab2_list /tmp/lab2_list.prof
-	# CPUPROFILE=/u/cs/grad/vivek/Development/cs_111/lab2b/lab2_list.prof /u/cs/grad/vivek/Development/cs_111/lab2b/lab2_list --sync=s --threads=12 --iterations=1000
-	# pprof /u/cs/grad/vivek/Development/cs_111/lab2b/lab2_list /u/cs/grad/vivek/Development/cs_111/lab2b/lab2_list.prof
+	# Build your program with debug symbols run the spin-lock list test (1,000 iterations 12 threads) under the profiler, and analyze the results to determine where the cycles are being spent.
+	LD_PRELOAD=/u/cs/grad/vivek/gperftools/lib/libprofiler.so CPUPROFILE=/u/cs/grad/vivek/Development/cs_111/lab2b/lab2_list.prof /u/cs/grad/vivek/Development/cs_111/lab2b/lab2_list --sync=s --iterations=1000 --threads=12
+	/u/cs/grad/vivek/gperftools/bin/pprof --text /u/cs/grad/vivek/Development/cs_111/lab2b/lab2_list /u/cs/grad/vivek/Development/cs_111/lab2b/lab2_list.prof
 
 graphs:
-	./gnuplot lab2b.gp
+	/u/cs/grad/zhou/iloveos/gnuplot lab2b.gp
 
 tarball:
-	tar pczf lab2b-303652195.tar.gz lab2_list.c SortedList.h SortedList.c Makefile README
+	tar pczf lab2b-303652195.tar.gz lab2_add.c lab2_list.c SortedList.h SortedList.c *.png Makefile README
 
 clean:
 	rm lab2_list
 	rm lab2_list.csv
 	rm lab2_add
 	rm lab2_add.csv
-
-clean_add:
-	rm lab2_add
-	rm lab2_add.csv
-
-clean_list:
-	rm lab2_list
-	rm lab2_list.csv
