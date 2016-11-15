@@ -22,3 +22,15 @@ const int SB_INODES_PER_GROUP_OFFSET = 40;
 const int SB_MAGIC_NUMBER_OFFSET = 56;
 
 const uint16_t EXT2_SUPER_MAGIC = 0xEF53;
+
+typedef struct superblock_info {
+	uint32_t inodes_count;
+	uint32_t blocks_count;
+	uint32_t first_data_block;
+	unsigned long block_size;
+	long fragment_size;
+	uint32_t blocks_per_group;
+	uint32_t fragments_per_group;
+	uint32_t inodes_per_group;
+	uint16_t magic_number;
+} SBInfo;
