@@ -46,6 +46,16 @@ const int BGD_FREE_BLOCKS_COUNT_OFFSET = 12;
 const int BGD_FREE_INODES_COUNT_OFFSET = 14;
 const int BGD_USED_DIRS_COUNT_OFFSET = 16;
 
+typedef struct group_descriptor_info {
+	int group_num;
+	uint32_t block_bitmap;
+	uint32_t inode_bitmap;
+	uint32_t inode_table;
+	uint16_t free_blocks_count;
+	uint16_t free_inodes_count;
+	uint16_t used_dirs_count;
+} GDInfo;
+
 //RELEVANT BITMAP DECLARATIONS
 const int BLOCK_BITMAP_TYPE = 0;
 const int INODE_BITMAP_TYPE = 1;
