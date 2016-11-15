@@ -34,3 +34,19 @@ typedef struct superblock_info {
 	uint32_t inodes_per_group;
 	uint16_t magic_number;
 } SBInfo;
+
+
+//RELEVANT BLOCK GROUP DESCRIPTOR DECLARATIONS
+const int BGD_SIZE = 32;
+
+const int BGD_BLOCK_BITMAP_OFFSET = 0;
+const int BGD_INODE_BITMAP_OFFSET = 4;
+const int BGD_INODE_TABLE_OFFSET = 8;
+const int BGD_FREE_BLOCKS_COUNT_OFFSET = 12;
+const int BGD_FREE_INODES_COUNT_OFFSET = 14;
+const int BGD_USED_DIRS_COUNT_OFFSET = 16;
+
+//RELEVANT BITMAP DECLARATIONS
+const int BLOCK_BITMAP_TYPE = 0;
+const int INODE_BITMAP_TYPE = 1;
+

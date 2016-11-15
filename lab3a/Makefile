@@ -12,4 +12,4 @@ clean:
 	rm *.csv
 
 dist:
-	tar pczf lab1a-303652195.tar.gz lab3a.c lab3a.h Makefile README
+	tar pczf lab3a-303652195.tar.gz lab3a.c lab3a.h Makefile README
