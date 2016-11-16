@@ -233,20 +233,25 @@ void read_bitmaps(int disk_fd, const GDInfo *gd, const SBInfo *sb, const int bit
 	//Each bit represent the current state of a block within that block group, where 1 means "used" and 0 "free/available". 
 	//The first block of this block group is represented by bit 0 of byte 0, the second by bit 1 of byte 0. 
 	//The 8th block is represented by bit 7 (most significant bit) of byte 0 while the 9th block is represented by bit 0 (least significant bit) of byte 1.
-	//TODO: round up here
-	for (int i = 0; i < (bitmap_size / 8); i++){
+
+	//Since this might not be a clean divide have to do a lot of remainder work to make sure you dont lose the last 1-7 bitmap entries
+	int bitmap_bytes = (bitmap_size / 8);
+	if (bitmap_size % 8 != 0) bitmap_bytes++;
+	for (int i = 0; i < bitmap_bytes; i++){
 		//grabbing 8 bits of the bitmap
 		uint8_t bitmap_byte = *(uint8_t *)(read_buf + i);
-		// fprintf(stdout, "bitmap byte %d is %x\n", i, bitmap_byte);
-		for (int j = 0; j < 8; j++){
+		//iterate through each bit of the bitmap_bit
+		int bit_num = 0;
+		int last_bit = (i == bitmap_size) ? bitmap_size % 8 : 8;
+		for (; bit_num < last_bit; bit_num++){
 			//check if bit is free
-			if ((bitmap_byte & (1 << j)) == 0){
+			if ((bitmap_byte & (1 << bit_num)) == 0){
 				fprintf(bitmap_csv, "%x,%d\n", bitmap_block_num, global_block_num);
 			}
 			else if (bitmap_type == INODE_BITMAP_TYPE) {
 				//fprintf(stdout, "checking allocated inode %d\n", (bitmap_byte & (1 << j)));
 				//where in the inode table is this block
-				int inode_table_idx = (i * 8) + j;
+				int inode_table_idx = (i * 8) + bit_num;
 				//fprintf(stdout, "calling read inode\n");
 				read_inode(disk_fd, gd, sb, global_block_num, inode_table_idx);
 			}
@@ -260,8 +265,9 @@ void read_bitmaps(int disk_fd, const GDInfo *gd, const SBInfo *sb, const int bit
 
 
 void read_group_descriptor(int disk_fd, const SBInfo *sb){
+	//Since I already checked that blocks per group evenly divides into blocks count in th super block this value is good!
 	int n_groups = sb->blocks_count / sb->blocks_per_group;
-	//group descriptor table starts at first block after superblock
+	//primary group descriptor table starts at first block after superblock
 	off_t bgd_offset = (sb->first_data_block + 1) * sb->block_size;
 
 	ssize_t bytes_read;
