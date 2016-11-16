@@ -261,15 +261,18 @@ void read_bitmaps(int disk_fd, const GDInfo *gd, const SBInfo *sb, const int bit
 
 void read_group_descriptor(int disk_fd, const SBInfo *sb){
 	int n_groups = sb->blocks_count / sb->blocks_per_group;
-	//group descriptor table starts at block after superblock
+	//group descriptor table starts at first block after superblock
 	off_t bgd_offset = (sb->first_data_block + 1) * sb->block_size;
 
 	ssize_t bytes_read;
 	char *read_buf = (char *) malloc(BGD_SIZE);
+	if (read_buf == NULL) error("malloc");
 
 	FILE *gd_csv = fopen("group.csv", "a");
 	if (gd_csv == NULL) error("Opening CSV file");
 
+	int group_start_block = bgd_offset / sb->block_size;
+	int group_end_block = group_start_block + sb->blocks_per_group;
 	//want to iterate through the n_groups group descriptors
 	for (int i = 0; i < n_groups; i++){
 		bzero(read_buf, BGD_SIZE);
@@ -277,25 +280,66 @@ void read_group_descriptor(int disk_fd, const SBInfo *sb){
 		if (bytes_read < BGD_SIZE) error("pread block group descriptor");
 
 		GDInfo *gd = (GDInfo *) malloc(sizeof(GDInfo));
-		gd->group_num = i;
+		if (gd == NULL) error("malloc");
 
-		//TODO: calculate the blocks per group from this and sanity check
-		//Group 7: 100000 blocks, superblock says 50000
+		gd->group_num = i;
 
 		//32bit block id of the first block of the "block bitmap" for the group represented.
 		gd->block_bitmap = *(uint32_t *)(read_buf + BGD_BLOCK_BITMAP_OFFSET);
-		//TODO: sanity check the bit map is within this groups blocks
-		//Group 7: blocks 100000-150000, free block map starts at 165000
+		if (gd->block_bitmap < group_start_block || gd->block_bitmap > group_end_block){
+			fprintf(stderr, "Group %d: blocks %d-%d, free block map starts at %d\n", 
+				gd->group_num, group_start_block, group_end_block, gd->block_bitmap);
+
+			bgd_offset += BGD_SIZE;
+			if (i > 1 && (i % 2 != 0)){
+				group_start_block += sb->blocks_per_group;
+				group_end_block += sb->blocks_per_group;
+			}
+			else {
+				group_start_block += (sb->blocks_per_group - 1);
+				group_end_block += (sb->blocks_per_group - 1);
+			}
+			free(gd);
+			continue;
+		}
 
 		//32bit block id of the first block of the "inode bitmap" for the group represented.
 		gd->inode_bitmap = *(uint32_t *)(read_buf + BGD_INODE_BITMAP_OFFSET);
-		//TODO: sanity check the inode map is within this groups blocks
-		//Group 7: blocks 100000-150000, free Inode map starts at 165000
+		if (gd->inode_bitmap < group_start_block || gd->inode_bitmap > group_end_block){
+			fprintf(stderr, "Group %d: blocks %d-%d, free block map starts at %d\n", 
+				gd->group_num, group_start_block, group_end_block, gd->inode_bitmap);
+
+			bgd_offset += BGD_SIZE;
+			if (i > 1 && (i % 2 != 0)){
+				group_start_block += sb->blocks_per_group;
+				group_end_block += sb->blocks_per_group;
+			}
+			else {
+				group_start_block += (sb->blocks_per_group - 1);
+				group_end_block += (sb->blocks_per_group - 1);
+			}
+			free(gd);
+			continue;
+		}
 
 		//32bit block id of the first block of the "inode table" for the group represented.
 		gd->inode_table = *(uint32_t *)(read_buf + BGD_INODE_TABLE_OFFSET);
-		//TODO: sanity check the inode table is within this group's blocks
-		//Group 7: blocks 100000-150000, Inode table starts at 165000
+		if (gd->inode_table < group_start_block || gd->inode_table > group_end_block){
+			fprintf(stderr, "Group %d: blocks %d-%d, free block map starts at %d\n", 
+				gd->group_num, group_start_block, group_end_block, gd->inode_table);
+
+			bgd_offset += BGD_SIZE;
+			if (i > 1 && (i % 2 != 0)){
+				group_start_block += sb->blocks_per_group;
+				group_end_block += sb->blocks_per_group;
+			}
+			else {
+				group_start_block += (sb->blocks_per_group - 1);
+				group_end_block += (sb->blocks_per_group - 1);
+			}
+			free(gd);
+			continue;
+		}
 
 		//16bit value indicating the total number of free blocks for the represented group.
 		gd->free_blocks_count = *(uint16_t *)(read_buf + BGD_FREE_BLOCKS_COUNT_OFFSET);
@@ -321,6 +365,14 @@ void read_group_descriptor(int disk_fd, const SBInfo *sb){
 		
 
 		bgd_offset += BGD_SIZE;
+		if (i > 1 && (i % 2 != 0)){
+			group_start_block += sb->blocks_per_group;
+			group_end_block += sb->blocks_per_group;
+		}
+		else {
+			group_start_block += (sb->blocks_per_group - 1);
+			group_end_block += (sb->blocks_per_group - 1);
+		}
 
 		free(gd);
 	}
