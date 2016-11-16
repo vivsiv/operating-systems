@@ -6,6 +6,9 @@
 #include <string.h>
 #include <stdint.h>
 
+#include <sys/types.h>
+#include <sys/stat.h>
+
 
 // RELEVANT SUPERBLOCK DECLARATIONS
 const int SB_OFFSET = 1024;

@@ -1,5 +1,7 @@
 #include "lab3a.h"
 
+static int IMG_SIZE_BYTES;
+
 void error(char *msg){
 	fprintf(stderr, "%s\n", msg);
 	exit(1);
@@ -339,23 +341,36 @@ void read_super_block(int disk_fd, SBInfo *sb){
 	//32 bit value indicating the total number of inodes, both used and free, in the file system
 	sb->inodes_count = *(uint32_t *)(read_buf + SB_INODES_COUNT_OFFSET);
 
-	//32 bit value indicating the total number of blocks in the system including all used, free and reserved
-	sb->blocks_count = *(uint32_t *)(read_buf + SB_BLOCKS_COUNT_OFFSET);
-	//TODO: sanity check for block count
-	// Superblock - invalid block count 200000 > image size 50000
-
-	//32 bit value identifying the first data block, in other word the id of the block containing the superblock structure.
-	sb->first_data_block = *(uint32_t *)(read_buf + SB_FIRST_DATA_BLOCK_OFFSET);
-	//TODO: Sanity check for first data block
-	// Superblock - invalid first block 100000 > image size 50000
-
 	//The block size is computed using this 32bit value as the number of bits to shift left the value 1024
 	uint32_t block_size_shift = *(uint32_t *)(read_buf + SB_BLOCK_SIZE_OFFSET);
 	sb->block_size = 1024 << block_size_shift;
-	if (sb->block_size < 512 || sb->block_size > 64000 || sb->block_size % 2 != 0){
+	//Block size must be reasonable (e.g. power of two between 512-64K)
+	if (sb->block_size < 512 || sb->block_size > 65536 || sb->block_size % 2 != 0){
 		fprintf(stderr, "Superblock - invalid block size: %lu\n", sb->block_size);
 		exit(1);
 	}
+
+	int image_size_blocks;
+	if (IMG_SIZE_BYTES % sb->block_size != 0) image_size_blocks = (IMG_SIZE_BYTES / sb->block_size) + 1;
+	else image_size_blocks = (IMG_SIZE_BYTES / sb->block_size);
+	fprintf(stdout, "image_size_blocks: %d\n", image_size_blocks);
+
+	//32 bit value indicating the total number of blocks in the system including all used, free and reserved
+	sb->blocks_count = *(uint32_t *)(read_buf + SB_BLOCKS_COUNT_OFFSET);
+	//Total blocks and first data block must be consistent with the file size
+	if (sb->blocks_count > image_size_blocks){
+		fprintf(stderr, "Superblock - invalid block count %u > image size %d\n", image_size_blocks, sb->blocks_count);
+		exit(1);
+	}
+
+	//32 bit value identifying the first data block, in other word the id of the block containing the superblock structure.
+	sb->first_data_block = *(uint32_t *)(read_buf + SB_FIRST_DATA_BLOCK_OFFSET);
+	//First data block must be consistent with the file size
+	if (sb->first_data_block > image_size_blocks){
+		fprintf(stderr, "Superblock - invalid first block %u > image size %d\n", image_size_blocks, sb->first_data_block);
+		exit(1);
+	}
+	
 
 	//The fragment size is computed using this 32bit value as the number of bits to shift left the value 1024. Note that a negative value would shift the bit right rather than left.
 	int32_t fragment_size_shift = *(int32_t *)(read_buf + SB_FRAGMENT_SIZE_OFFSET);
@@ -364,6 +379,7 @@ void read_super_block(int disk_fd, SBInfo *sb){
 
 	//32 bit value indicating the total number of blocks per group
 	sb->blocks_per_group = *(uint32_t *)(read_buf + SB_BLOCKS_PER_GROUP_OFFSET);
+	//Blocks per group must evenly divide into total blocks
 	if (sb->blocks_count % sb->blocks_per_group != 0){
 		fprintf(stderr, "Superblock - %u blocks, %u blocks/group\n", sb->blocks_count, sb->blocks_per_group);
 		exit(1);
@@ -374,6 +390,7 @@ void read_super_block(int disk_fd, SBInfo *sb){
 
 	//32 bit value indicating the total number of inodes per group
 	sb->inodes_per_group = *(uint32_t *)(read_buf + SB_INODES_PER_GROUP_OFFSET);
+	//Inodes per group must evenly divide into total inodes
 	if (sb->inodes_count % sb->inodes_per_group != 0){
 		fprintf(stderr, "Superblock - %u inodes, %u inodes/group\n", sb->inodes_count, sb->inodes_per_group);
 		exit(1);
@@ -381,6 +398,7 @@ void read_super_block(int disk_fd, SBInfo *sb){
 
 	//16 bit value identifying the file system as Ext2. The value is currently fixed to EXT2_SUPER_MAGIC of value 0xEF53.
 	sb->magic_number = *(uint16_t *)(read_buf + SB_MAGIC_NUMBER_OFFSET);
+	//Magic number must be correct
 	if (sb->magic_number != EXT2_SUPER_MAGIC) {
 		fprintf(stderr, "Superblock - invalid magic: %x\n", sb->magic_number);
 		exit(1);
@@ -400,7 +418,7 @@ void read_super_block(int disk_fd, SBInfo *sb){
 		sb->fragments_per_group,
 		sb->first_data_block
 	);
-	
+
 	fclose(sb_csv);
 	free(read_buf);
 }
@@ -416,6 +434,10 @@ int main(int argc, char *argv[]) {
 	//open the provided disk image
 	int disk_fd = open(argv[1], O_RDONLY);
 	if (disk_fd < 0) error("Opening disk image");
+	struct stat stat_buf;
+	fstat(disk_fd, &stat_buf);
+	IMG_SIZE_BYTES = stat_buf.st_size;
+	fprintf(stdout, "image_size_bytes: %d\n", IMG_SIZE_BYTES);
 
 	SBInfo *sb = (SBInfo *) malloc(sizeof(SBInfo));
 	if (sb == NULL) error("malloc");
