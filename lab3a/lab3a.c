@@ -5,6 +5,233 @@ void error(char *msg){
 	exit(1);
 }
 
+void read_directory(const int disk_fd){
+	ssize_t bytes_read;
+	char *read_buf = (char *) malloc(DIR_SIZE);
+
+	bytes_read = pread(disk_fd, (void *)read_buf, DIR_SIZE, inode_location);
+	if (bytes_read < IN_SIZE) error("pread directory");
+
+	FILE *in_csv = fopen("directory.csv", "a");
+	if (in_csv == NULL) error("Opening CSV file");
+
+	fclose(bitmap_csv);
+	free(read_buf);
+
+}
+
+void read_inode(const int disk_fd, const GDInfo *gd, const SBInfo *sb, const int inode_number, const int inode_table_idx){
+	//getting starting offset of inode
+	off_t inode_location = (gd->inode_table * sb->block_size) + (inode_table_idx * IN_SIZE);
+
+	ssize_t bytes_read;
+	char *read_buf = (char *) malloc(IN_SIZE);
+
+	bytes_read = pread(disk_fd, (void *)read_buf, IN_SIZE, inode_location);
+	if (bytes_read < IN_SIZE) error("pread inode");
+
+
+	//16 bit value used to indicate the format of the described file and the access rights
+	uint16_t mode = *(uint16_t *)(read_buf + IN_MODE_OFFSET);
+
+	//We only recognize a (small) subset of the file types: ‘f’ for regular file, ‘d’ for directory, and ‘s’ for symbolic links. For other types, use ‘?’.
+	char file_type;
+	switch(mode & IN_MODE_MASK) {
+		case IN_MODE_REG_FILE:
+			file_type = 'f';
+			break;
+		case IN_MODE_DIR:
+			file_type = 'd';
+			break;
+		case IN_MODE_SYM_LINK:
+			file_type = 's';
+			break;
+		default:
+			file_type = '?';
+			break;
+	}
+
+	//16 bit user id associated with the file (lower 16 bits)
+	uint16_t owner = *(uint16_t *)(read_buf + IN_OWNER_OFFSET);
+
+	//In revision 0, (signed) 32 bit value indicating the size of the file in bytes. 
+	//In revision 1 and later revisions, and only for regular files, this represents the lower 32-bit of the file size; the upper 32-bit is located in the i_dir_acl.
+	uint32_t file_size = *(uint32_t *)(read_buf + IN_FILE_SIZE_OFFSET);
+
+	//32 bit value representing the number of seconds since january 1st 1970 of the last time this inode was accessed.
+	uint32_t access_time = *(uint32_t *)(read_buf + IN_ACCESS_TIME_OFFSET);
+
+	//32 bit value representing the number of seconds since january 1st 1970, of when the inode was created.
+	uint32_t creation_time = *(uint32_t *)(read_buf + IN_CREATION_TIME_OFFSET);
+
+	//32 bit value representing the number of seconds since january 1st 1970, of the last time this inode was modified.
+	uint32_t modification_time = *(uint32_t *)(read_buf + IN_MODIFICATION_TIME_OFFSET);
+
+	//16 bit value of the POSIX group having access to this file. (lower 16 bits)
+	uint16_t group = *(uint16_t *)(read_buf + IN_GROUP_OFFSET);
+
+	//16 bit value indicating how many times this particular inode is linked (referred to). 
+	uint16_t links_count = *(uint16_t *)(read_buf + IN_LINKS_COUNT_OFFSET);
+
+	//32-bit value representing the total number of 512-bytes blocks reserved to contain the data of this inode, regardless if these blocks are used or not
+	uint32_t i_blocks = *(uint32_t *)(read_buf + IN_NUMBER_OF_BLOCKS_OFFSET);
+	uint32_t number_of_blocks =  i_blocks / (2 << sb->block_size);
+
+	//15 x 32bit block numbers pointing to the blocks containing the data for this inode. 
+	//The first 12 blocks are direct blocks.
+	//The 13th entry in this array is the block number of the first indirect block; which is a block containing an array of block ID containing the data.
+	//The 14th entry in this array is the block number of the first doubly-indirect block; which is a block containing an array of indirect block IDs
+	//The 15th entry in this array is the block number of the triply-indirect block
+	//A value of 0 in this array effectively terminates it with no further block being defined.
+	uint32_t *block_pointers = (uint32_t *)(read_buf + IN_BLOCK_POINTERS_OFFSET);
+
+	FILE *in_csv = fopen("inode.csv", "a");
+	if (in_csv == NULL) error("Opening CSV file");
+
+	fprintf(in_csv,"%d,%c,%o,%u,%u,%u,%x,%x,%x,%u,%u",
+		inode_number,
+		file_type,
+		mode,
+		owner,
+		group,
+		links_count,
+		creation_time,
+		modification_time,
+		access_time,
+		file_size,
+		number_of_blocks
+	);
+
+	for (int i = 0; i < IN_BLOCK_POINTERS_COUNT; i++){
+		fprintf(in_csv, ",%x", block_pointers[i]);
+	}
+	fprintf(in_csv, "\n");
+
+	fclose(in_csv);
+	free(read_buf);
+}
+
+void read_bitmaps(int disk_fd, const GDInfo *gd, const SBInfo *sb, const int bitmap_type){
+	int bitmap_block_num;
+	int global_block_num;
+	int bitmap_size;
+	//start counting blocks based on which group number this is
+	if (bitmap_type == BLOCK_BITMAP_TYPE) {
+		bitmap_block_num = gd->block_bitmap;
+		global_block_num = (gd->group_num * sb->blocks_per_group) + sb->first_data_block;
+		bitmap_size = sb->blocks_per_group;
+	}
+	else {
+		bitmap_block_num = gd->inode_bitmap;
+		global_block_num = (gd->group_num * sb->inodes_per_group) + 1;
+		bitmap_size = sb->inodes_per_group;
+	}
+
+	ssize_t bytes_read;
+	char *read_buf = (char *) malloc(sb->block_size);
+	off_t bitmap_offset = bitmap_block_num * sb->block_size;
+	bytes_read = pread(disk_fd, (void *)read_buf, sb->block_size, bitmap_offset);
+	if (bytes_read < sb->block_size) error("pread bitmap");
+
+	FILE *bitmap_csv = fopen("bitmap.csv", "a");
+	if (bitmap_csv == NULL) error("Opening CSV file");
+	
+	//Each bit represent the current state of a block within that block group, where 1 means "used" and 0 "free/available". 
+	//The first block of this block group is represented by bit 0 of byte 0, the second by bit 1 of byte 0. 
+	//The 8th block is represented by bit 7 (most significant bit) of byte 0 while the 9th block is represented by bit 0 (least significant bit) of byte 1.
+	for (int i = 0; i < (bitmap_size / 8); i++){
+		//grabbing 8 bits of the bitmap
+		uint8_t bitmap_byte = *(uint8_t *)(read_buf + i);
+		// fprintf(stdout, "bitmap byte %d is %x\n", i, bitmap_byte);
+		for (int j = 0; j < 8; j++){
+			//check if bit is free
+			if ((bitmap_byte & (1 << j)) == 0){
+				fprintf(bitmap_csv, "%x,%d\n", bitmap_block_num, global_block_num);
+			}
+			else if (bitmap_type == INODE_BITMAP_TYPE) {
+				//fprintf(stdout, "checking allocated inode %d\n", (bitmap_byte & (1 << j)));
+				//where in the inode table is this block
+				int inode_table_idx = (i * 8) + j;
+				//fprintf(stdout, "calling read inode\n");
+				read_inode(disk_fd, gd, sb, global_block_num, inode_table_idx);
+			}
+			global_block_num++;
+		}
+	}
+	fclose(bitmap_csv);
+	free(read_buf);
+}
+
+
+void read_group_descriptor(int disk_fd, const SBInfo *sb){
+	int n_groups = sb->blocks_count / sb->blocks_per_group;
+	//group descriptor table starts at block after superblock
+	off_t bgd_offset = (sb->first_data_block + 1) * sb->block_size;
+
+	ssize_t bytes_read;
+	char *read_buf = (char *) malloc(BGD_SIZE);
+
+	FILE *gd_csv = fopen("group.csv", "a");
+	if (gd_csv == NULL) error("Opening CSV file");
+
+	//want to iterate through the n_groups group descriptors
+	for (int i = 0; i < n_groups; i++){
+		bzero(read_buf, BGD_SIZE);
+		bytes_read = pread(disk_fd, (void *)read_buf, BGD_SIZE, bgd_offset);
+		if (bytes_read < BGD_SIZE) error("pread block group descriptor");
+
+		GDInfo *gd = (GDInfo *) malloc(sizeof(GDInfo));
+		gd->group_num = i;
+
+		//TODO: calculate the blocks per group from this and sanity check
+		//Group 7: 100000 blocks, superblock says 50000
+
+		//32bit block id of the first block of the "block bitmap" for the group represented.
+		gd->block_bitmap = *(uint32_t *)(read_buf + BGD_BLOCK_BITMAP_OFFSET);
+		//TODO: sanity check the bit map is within this groups blocks
+		//Group 7: blocks 100000-150000, free block map starts at 165000
+
+		//32bit block id of the first block of the "inode bitmap" for the group represented.
+		gd->inode_bitmap = *(uint32_t *)(read_buf + BGD_INODE_BITMAP_OFFSET);
+		//TODO: sanity check the inode map is within this groups blocks
+		//Group 7: blocks 100000-150000, free Inode map starts at 165000
+
+		//32bit block id of the first block of the "inode table" for the group represented.
+		gd->inode_table = *(uint32_t *)(read_buf + BGD_INODE_TABLE_OFFSET);
+		//TODO: sanity check the inode table is within this group's blocks
+		//Group 7: blocks 100000-150000, Inode table starts at 165000
+
+		//16bit value indicating the total number of free blocks for the represented group.
+		gd->free_blocks_count = *(uint16_t *)(read_buf + BGD_FREE_BLOCKS_COUNT_OFFSET);
+
+		//16bit value indicating the total number of free inodes for the represented group.
+		gd->free_inodes_count = *(uint16_t *)(read_buf + BGD_FREE_INODES_COUNT_OFFSET);
+
+		//16bit value indicating the number of inodes allocated to directories for the represented group.
+		gd->used_dirs_count = *(uint16_t *)(read_buf + BGD_USED_DIRS_COUNT_OFFSET);
+
+		fprintf(gd_csv,"%u, %u, %u, %u, %x, %x, %x\n",
+			sb->blocks_per_group,
+			gd->free_blocks_count,
+			gd->free_inodes_count,
+			gd->used_dirs_count,
+			gd->inode_bitmap,
+			gd->block_bitmap,
+			gd->inode_table
+		);
+
+		read_bitmaps(disk_fd, gd, sb, BLOCK_BITMAP_TYPE);
+		read_bitmaps(disk_fd, gd, sb, INODE_BITMAP_TYPE);
+		
+
+		bgd_offset += BGD_SIZE;
+
+		free(gd);
+	}
+
+	fclose(gd_csv);
+	free(read_buf);
+}
 
 void read_super_block(int disk_fd, SBInfo *sb){
 	ssize_t bytes_read;
@@ -79,123 +306,6 @@ void read_super_block(int disk_fd, SBInfo *sb){
 		sb->first_data_block
 	);
 	fclose(sb_csv);
-	free(read_buf);
-}
-
-void read_bitmaps(int disk_fd, const GDInfo *gd, const SBInfo *sb, const int bitmap_type){
-	int bitmap_block_num;
-	int block_number;
-	//start counting blocks based on which group number this is
-	if (bitmap_type == BLOCK_BITMAP_TYPE) {
-		bitmap_block_num = gd->block_bitmap;
-		block_number = (gd->group_num * sb->blocks_per_group) + 1;
-	}
-	else {
-		bitmap_block_num = gd->inode_bitmap;
-		block_number = (gd->group_num * sb->inodes_per_group) + 1;
-	}
-
-	ssize_t bytes_read;
-	char *read_buf = (char *) malloc(sb->block_size);
-	off_t bitmap_offset = bitmap_block_num * sb->block_size;
-	bytes_read = pread(disk_fd, (void *)read_buf, sb->block_size, bitmap_offset);
-	if (bytes_read < sb->block_size) error("pread bitmap");
-
-	FILE *bitmap_csv = fopen("bitmap.csv", "a");
-	if (bitmap_csv == NULL) error("Opening CSV file");
-	
-	//Each bit represent the current state of a block within that block group, where 1 means "used" and 0 "free/available". 
-	//The first block of this block group is represented by bit 0 of byte 0, the second by bit 1 of byte 0. 
-	//The 8th block is represented by bit 7 (most significant bit) of byte 0 while the 9th block is represented by bit 0 (least significant bit) of byte 1.
-	for (int i = 0; i < sb->block_size; i++){
-		//grabbing 8 bits of the bitmap
-		uint8_t bitmap_byte = *(uint8_t *)(read_buf + i);
-		// fprintf(stdout, "bitmap byte %d is %x\n", i, bitmap_byte);
-		for (int j = 0; j < 8; j++){
-			//check if bit is free
-			if ((bitmap_byte & (1 << j)) == 0){
-				fprintf(bitmap_csv, "%x,%d\n", bitmap_block_num, block_number);
-			}
-			block_number++;
-		}
-		
-	}
-
-	fclose(bitmap_csv);
-	free(read_buf);
-}
-
-void read_inodes(int disk_fd){
-
-}
-
-void read_group_descriptor(int disk_fd, const SBInfo *sb){
-	int n_groups = sb->blocks_count / sb->blocks_per_group;
-	//group descriptor table starts at block after superblock
-	off_t bgd_offset = (sb->first_data_block + 1) * sb->block_size;
-
-	ssize_t bytes_read;
-	char *read_buf = (char *) malloc(BGD_SIZE);
-
-	FILE *gd_csv = fopen("group.csv", "a");
-	if (gd_csv == NULL) error("Opening CSV file");
-
-	//want to iterate through the n_groups group descriptors
-	for (int i = 0; i < n_groups; i++){
-		bzero(read_buf, BGD_SIZE);
-		bytes_read = pread(disk_fd, (void *)read_buf, BGD_SIZE, bgd_offset);
-		if (bytes_read < BGD_SIZE) error("pread block group descriptor");
-
-		GDInfo *gd = (GDInfo *) malloc(sizeof(GDInfo));
-		gd->group_num = i;
-
-		//TODO: calculate the blocks per group from this and sanity check
-		//Group 7: 100000 blocks, superblock says 50000
-
-		//32bit block id of the first block of the "block bitmap" for the group represented.
-		gd->block_bitmap = *(uint32_t *)(read_buf + BGD_BLOCK_BITMAP_OFFSET);
-		//TODO: sanity check the bit map is within this groups blocks
-		//Group 7: blocks 100000-150000, free block map starts at 165000
-
-		//32bit block id of the first block of the "inode bitmap" for the group represented.
-		gd->inode_bitmap = *(uint32_t *)(read_buf + BGD_INODE_BITMAP_OFFSET);
-		//TODO: sanity check the inode map is within this groups blocks
-		//Group 7: blocks 100000-150000, free Inode map starts at 165000
-
-		//32bit block id of the first block of the "inode table" for the group represented.
-		gd->inode_table = *(uint32_t *)(read_buf + BGD_INODE_TABLE_OFFSET);
-		//TODO: sanity check the inode table is within this group's blocks
-		//Group 7: blocks 100000-150000, Inode table starts at 165000
-
-		//16bit value indicating the total number of free blocks for the represented group.
-		gd->free_blocks_count = *(uint16_t *)(read_buf + BGD_FREE_BLOCKS_COUNT_OFFSET);
-
-		//16bit value indicating the total number of free inodes for the represented group.
-		gd->free_inodes_count = *(uint16_t *)(read_buf + BGD_FREE_INODES_COUNT_OFFSET);
-
-		//16bit value indicating the number of inodes allocated to directories for the represented group.
-		gd->used_dirs_count = *(uint16_t *)(read_buf + BGD_USED_DIRS_COUNT_OFFSET);
-
-		fprintf(gd_csv,"%u, %u, %u, %u, %x, %x, %x\n",
-			sb->blocks_per_group,
-			gd->free_blocks_count,
-			gd->free_inodes_count,
-			gd->used_dirs_count,
-			gd->inode_bitmap,
-			gd->block_bitmap,
-			gd->inode_table
-		);
-
-		read_bitmaps(disk_fd, gd, sb, BLOCK_BITMAP_TYPE);
-		read_bitmaps(disk_fd, gd, sb, INODE_BITMAP_TYPE);
-		
-
-		bgd_offset += BGD_SIZE;
-
-		free(gd);
-	}
-
-	fclose(gd_csv);
 	free(read_buf);
 }
 
