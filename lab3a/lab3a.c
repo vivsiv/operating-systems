@@ -73,11 +73,10 @@ void read_directory(const int disk_fd, const int parent_inode_number, const uint
 		entry_pointer += entry_length;
 		bytes_scanned += entry_length;
 		(*entry_number)++;
-
 	}
+
 	fclose(dir_csv);
 	free(read_buf);
-
 }
 
 
@@ -121,20 +120,10 @@ void read_inode(const int disk_fd, const GDInfo *gd, const SBInfo *sb, const int
 
 	//We only recognize a (small) subset of the file types: ‘f’ for regular file, ‘d’ for directory, and ‘s’ for symbolic links. For other types, use ‘?’.
 	char file_type;
-	switch(mode & IN_MODE_MASK) {
-		case IN_MODE_REG_FILE:
-			file_type = 'f';
-			break;
-		case IN_MODE_DIR:
-			file_type = 'd';
-			break;
-		case IN_MODE_SYM_LINK:
-			file_type = 's';
-			break;
-		default:
-			file_type = '?';
-			break;
-	}
+	if ((mode & IN_MODE_MASK) == IN_MODE_REG_FILE) file_type = 'f';
+	else if ((mode & IN_MODE_MASK) == IN_MODE_DIR) file_type = 'd';
+	else if ((mode & IN_MODE_MASK) == IN_MODE_SYM_LINK) file_type = 's';
+	else file_type = '?';
 
 	//16 bit user id associated with the file (lower 16 bits)
 	uint16_t owner = *(uint16_t *)(read_buf + IN_OWNER_OFFSET);
@@ -170,31 +159,6 @@ void read_inode(const int disk_fd, const GDInfo *gd, const SBInfo *sb, const int
 	//A value of 0 in this array effectively terminates it with no further block being defined.
 	uint32_t *block_pointers = (uint32_t *)(read_buf + IN_BLOCK_POINTERS_OFFSET);
 
-	FILE *in_csv = fopen("inode.csv", "a");
-	if (in_csv == NULL) error("Opening CSV file");
-
-	fprintf(in_csv,"%d,%c,%o,%u,%u,%u,%x,%x,%x,%u,%u",
-		inode_number,
-		file_type,
-		mode,
-		owner,
-		group,
-		links_count,
-		creation_time,
-		modification_time,
-		access_time,
-		file_size,
-		number_of_blocks
-	);
-
-	for (int i = 0; i < IN_BLOCK_POINTERS_COUNT; i++){
-		fprintf(in_csv, ",%x", block_pointers[i]);
-	}
-	fprintf(in_csv, "\n");
-
-	fclose(in_csv);
-	free(read_buf);
-
 	//go through the data blocks and handle them accordingly
 	int entry_number = 0;
 	for (int i = 0; i < number_of_blocks; i++){
@@ -212,7 +176,31 @@ void read_inode(const int disk_fd, const GDInfo *gd, const SBInfo *sb, const int
 			read_indirect_block(disk_fd, block_pointers[i], sb, 3);
 		}
 	}
-	
+
+	FILE *in_csv = fopen("inode.csv", "a");
+	if (in_csv == NULL) error("Opening CSV file");
+
+	fprintf(in_csv,"%d,%c,%o,%u,%u,%u,%x,%x,%x,%u,%u",
+		inode_number,
+		file_type,
+		mode,
+		owner,
+		group,
+		links_count,
+		creation_time,
+		modification_time,
+		access_time,
+		file_size,
+		number_of_blocks
+	);
+
+	for (int j = 0; j < IN_BLOCK_POINTERS_COUNT; j++){
+		fprintf(in_csv, ",%x", block_pointers[j]);
+	}
+	fprintf(in_csv, "\n");
+
+	fclose(in_csv);
+	free(read_buf);
 }
 
 void read_bitmaps(int disk_fd, const GDInfo *gd, const SBInfo *sb, const int bitmap_type){
@@ -263,6 +251,7 @@ void read_bitmaps(int disk_fd, const GDInfo *gd, const SBInfo *sb, const int bit
 			global_block_num++;
 		}
 	}
+
 	fclose(bitmap_csv);
 	free(read_buf);
 }
@@ -342,6 +331,7 @@ void read_super_block(int disk_fd, SBInfo *sb){
 	ssize_t bytes_read;
 
 	char *read_buf = (char *) malloc(SB_SIZE);
+	if (read_buf == NULL) error("malloc");
 
 	bytes_read = pread(disk_fd, (void *)read_buf, SB_SIZE, SB_OFFSET);
 	if (bytes_read < SB_SIZE) error("pread superblock");
@@ -410,6 +400,7 @@ void read_super_block(int disk_fd, SBInfo *sb){
 		sb->fragments_per_group,
 		sb->first_data_block
 	);
+	
 	fclose(sb_csv);
 	free(read_buf);
 }
@@ -427,6 +418,7 @@ int main(int argc, char *argv[]) {
 	if (disk_fd < 0) error("Opening disk image");
 
 	SBInfo *sb = (SBInfo *) malloc(sizeof(SBInfo));
+	if (sb == NULL) error("malloc");
 	read_super_block(disk_fd, sb);
 
 	read_group_descriptor(disk_fd, sb);
