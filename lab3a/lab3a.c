@@ -291,7 +291,7 @@ void read_group_descriptor(int disk_fd, const SBInfo *sb){
 				gd->group_num, group_start_block, group_end_block, gd->block_bitmap);
 
 			bgd_offset += BGD_SIZE;
-			if (i > 1 && (i % 2 != 0)){
+			if (i % 2 != 0){
 				group_start_block += sb->blocks_per_group;
 				group_end_block += sb->blocks_per_group;
 			}
@@ -306,11 +306,11 @@ void read_group_descriptor(int disk_fd, const SBInfo *sb){
 		//32bit block id of the first block of the "inode bitmap" for the group represented.
 		gd->inode_bitmap = *(uint32_t *)(read_buf + BGD_INODE_BITMAP_OFFSET);
 		if (gd->inode_bitmap < group_start_block || gd->inode_bitmap > group_end_block){
-			fprintf(stderr, "Group %d: blocks %d-%d, free block map starts at %d\n", 
+			fprintf(stderr, "Group %d: blocks %d-%d, free Inode map starts at %d\n", 
 				gd->group_num, group_start_block, group_end_block, gd->inode_bitmap);
 
 			bgd_offset += BGD_SIZE;
-			if (i > 1 && (i % 2 != 0)){
+			if (i % 2 != 0){
 				group_start_block += sb->blocks_per_group;
 				group_end_block += sb->blocks_per_group;
 			}
@@ -325,11 +325,11 @@ void read_group_descriptor(int disk_fd, const SBInfo *sb){
 		//32bit block id of the first block of the "inode table" for the group represented.
 		gd->inode_table = *(uint32_t *)(read_buf + BGD_INODE_TABLE_OFFSET);
 		if (gd->inode_table < group_start_block || gd->inode_table > group_end_block){
-			fprintf(stderr, "Group %d: blocks %d-%d, free block map starts at %d\n", 
+			fprintf(stderr, "Group %d: blocks %d-%d, Inode table starts at %d\n", 
 				gd->group_num, group_start_block, group_end_block, gd->inode_table);
 
 			bgd_offset += BGD_SIZE;
-			if (i > 1 && (i % 2 != 0)){
+			if (i % 2 != 0){
 				group_start_block += sb->blocks_per_group;
 				group_end_block += sb->blocks_per_group;
 			}
@@ -365,7 +365,7 @@ void read_group_descriptor(int disk_fd, const SBInfo *sb){
 		
 
 		bgd_offset += BGD_SIZE;
-		if (i > 1 && (i % 2 != 0)){
+		if (i % 2 != 0){
 			group_start_block += sb->blocks_per_group;
 			group_end_block += sb->blocks_per_group;
 		}
