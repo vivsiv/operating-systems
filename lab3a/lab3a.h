@@ -114,20 +114,9 @@ const int IN_MODE_MASK = 0xF000;
 
 
 //RELEVANT DIRECTORY DECLARATIONS
-struct ext2_directory {
-    uint32_t  inode;
-    uint16_t  rec_len;
-    uint8_t   name_len;
-    uint8_t   file_type;
-    char[255] name;
-};
-
-const int DIR_SIZE = sizeof(struct ext2_dir);
-
 const int DIR_PARENT_INODE_NUMBER_OFFSET = 0;
 const int DIR_ENTRY_LENGTH_OFFSET = 4;
 const int DIR_NAME_LENGTH_OFFSET = 6;
-const int DIR_FILE_TYPE_OFFSET = 7;
 const int DIR_NAME_OFFSET = 8;
 
 

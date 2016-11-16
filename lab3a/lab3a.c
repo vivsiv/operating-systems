@@ -5,19 +5,104 @@ void error(char *msg){
 	exit(1);
 }
 
-void read_directory(const int disk_fd){
+void read_indirect_block(const int disk_fd, const uint32_t block_number, const SBInfo *sb, int level){
 	ssize_t bytes_read;
-	char *read_buf = (char *) malloc(DIR_SIZE);
+	uint32_t *pointer_buf = (uint32_t *) malloc(sb->block_size);
 
-	bytes_read = pread(disk_fd, (void *)read_buf, DIR_SIZE, inode_location);
-	if (bytes_read < IN_SIZE) error("pread directory");
+	bytes_read = pread(disk_fd, (void *)pointer_buf, sb->block_size, block_number * sb->block_size);
+	if (bytes_read < sb->block_size) error("pread indirect block");
 
-	FILE *in_csv = fopen("directory.csv", "a");
-	if (in_csv == NULL) error("Opening CSV file");
+	FILE *ind_csv = fopen("indirect.csv", "a");
+	if (ind_csv == NULL) error("Opening CSV file");
 
-	fclose(bitmap_csv);
+	int blocks_analyzed = 0;
+	int pointers_per_block = sb->block_size / sizeof(uint32_t);
+	while (blocks_analyzed < pointers_per_block){
+		uint32_t new_block_number = *(pointer_buf + blocks_analyzed);
+		if (new_block_number != 0){
+			fprintf(ind_csv,"%x,%u,%x\n", block_number, blocks_analyzed, new_block_number);
+			if (level > 1) read_indirect_block(disk_fd, new_block_number, sb, level - 1);
+		}
+		blocks_analyzed++;
+	}
+
+	fclose(ind_csv);
+	free(pointer_buf);
+}
+
+void read_directory(const int disk_fd, const int parent_inode_number, const uint32_t block_number, int *entry_number, const SBInfo *sb){
+	ssize_t bytes_read;
+	char *read_buf = (char *) malloc(sb->block_size);
+
+	bytes_read = pread(disk_fd, (void *)read_buf, sb->block_size, block_number * sb->block_size);
+	if (bytes_read < sb->block_size) error("pread directory");
+
+
+	FILE *dir_csv = fopen("directory.csv", "a");
+	if (dir_csv == NULL) error("Opening CSV file");
+
+	char* entry_pointer = read_buf;
+	uint32_t bytes_scanned = 0;
+	while (bytes_scanned < sb->block_size){
+		//32 bit inode number of the file entry. A value of 0 indicate that the entry is not used.
+		uint32_t inode_number = *(uint32_t *)(entry_pointer + DIR_PARENT_INODE_NUMBER_OFFSET);
+		//16bit unsigned displacement to the next directory entry from the start of the current directory entry. 
+	    uint16_t entry_length = *(uint16_t *)(entry_pointer + DIR_ENTRY_LENGTH_OFFSET);
+	    //8 bit unsigned value indicating how many bytes of character data are contained in the name.
+	    uint8_t  name_length = *(uint8_t *)(entry_pointer + DIR_NAME_LENGTH_OFFSET);
+	    //Name of the entry. The ISO-Latin-1 character set is expected in most system. The name must be no longer than 255 bytes after encoding.
+	    char name[name_length + 3];
+	    name[0] = '"';
+	    for (int i = 1; i <= name_length; i++){
+	    	name[i] = *(char *)(entry_pointer + DIR_NAME_OFFSET + (i - 1));
+	    }
+	    name[name_length + 1] = '"';
+	    name[name_length + 2] = '\0';
+
+	    if (inode_number != 0){
+			fprintf(dir_csv,"%d,%d,%u,%u,%u,%s\n",
+				parent_inode_number,
+				*entry_number,
+				entry_length,
+				name_length,
+				inode_number,
+				&name[0]
+			);
+		}
+
+		entry_pointer += entry_length;
+		bytes_scanned += entry_length;
+		(*entry_number)++;
+
+	}
+	fclose(dir_csv);
 	free(read_buf);
 
+}
+
+
+//has pointers to directories
+void read_indirect_directory(const int disk_fd, const int parent_inode_number, 
+	const uint32_t block_number, int *entry_number, const SBInfo *sb, int level){
+
+	ssize_t bytes_read;
+	uint32_t *pointer_buf = (uint32_t *) malloc(sb->block_size);
+
+	bytes_read = pread(disk_fd, (void *)pointer_buf, sb->block_size, block_number * sb->block_size);
+	if (bytes_read < sb->block_size) error("pread indirect directory");
+
+	int blocks_analyzed = 0;
+	int pointers_per_block = sb->block_size / sizeof(uint32_t);
+	while (blocks_analyzed < pointers_per_block){
+		uint32_t new_block_number = *(pointer_buf + blocks_analyzed);
+		if (new_block_number != 0){
+			if (level == 1) read_directory(disk_fd, parent_inode_number, new_block_number, entry_number, sb);
+			else read_indirect_directory(disk_fd, parent_inode_number, new_block_number, entry_number, sb, level - 1);
+		}
+		blocks_analyzed++;
+	}
+
+	free(pointer_buf);
 }
 
 void read_inode(const int disk_fd, const GDInfo *gd, const SBInfo *sb, const int inode_number, const int inode_table_idx){
@@ -75,7 +160,7 @@ void read_inode(const int disk_fd, const GDInfo *gd, const SBInfo *sb, const int
 
 	//32-bit value representing the total number of 512-bytes blocks reserved to contain the data of this inode, regardless if these blocks are used or not
 	uint32_t i_blocks = *(uint32_t *)(read_buf + IN_NUMBER_OF_BLOCKS_OFFSET);
-	uint32_t number_of_blocks =  i_blocks / (2 << sb->block_size);
+	uint32_t number_of_blocks = i_blocks / (2 << sb->block_size);
 
 	//15 x 32bit block numbers pointing to the blocks containing the data for this inode. 
 	//The first 12 blocks are direct blocks.
@@ -109,6 +194,25 @@ void read_inode(const int disk_fd, const GDInfo *gd, const SBInfo *sb, const int
 
 	fclose(in_csv);
 	free(read_buf);
+
+	//go through the data blocks and handle them accordingly
+	int entry_number = 0;
+	for (int i = 0; i < number_of_blocks; i++){
+		if (i < 12 && file_type == 'd') read_directory(disk_fd, inode_number, block_pointers[i], &entry_number, sb);
+		else if (i == 12) {
+			if (file_type == 'd') read_indirect_directory(disk_fd, inode_number, block_pointers[i], &entry_number, sb, 1);
+			read_indirect_block(disk_fd, block_pointers[i], sb, 1);
+		}
+		else if (i == 13) {
+			if (file_type == 'd') read_indirect_directory(disk_fd, inode_number, block_pointers[i], &entry_number, sb, 2);
+			read_indirect_block(disk_fd, block_pointers[i], sb, 2);
+		}
+		else if (i == 14) {
+			if (file_type == 'd') read_indirect_directory(disk_fd, inode_number, block_pointers[i], &entry_number, sb, 3);
+			read_indirect_block(disk_fd, block_pointers[i], sb, 3);
+		}
+	}
+	
 }
 
 void read_bitmaps(int disk_fd, const GDInfo *gd, const SBInfo *sb, const int bitmap_type){
@@ -139,6 +243,7 @@ void read_bitmaps(int disk_fd, const GDInfo *gd, const SBInfo *sb, const int bit
 	//Each bit represent the current state of a block within that block group, where 1 means "used" and 0 "free/available". 
 	//The first block of this block group is represented by bit 0 of byte 0, the second by bit 1 of byte 0. 
 	//The 8th block is represented by bit 7 (most significant bit) of byte 0 while the 9th block is represented by bit 0 (least significant bit) of byte 1.
+	//TODO: round up here
 	for (int i = 0; i < (bitmap_size / 8); i++){
 		//grabbing 8 bits of the bitmap
 		uint8_t bitmap_byte = *(uint8_t *)(read_buf + i);
@@ -210,7 +315,7 @@ void read_group_descriptor(int disk_fd, const SBInfo *sb){
 		//16bit value indicating the number of inodes allocated to directories for the represented group.
 		gd->used_dirs_count = *(uint16_t *)(read_buf + BGD_USED_DIRS_COUNT_OFFSET);
 
-		fprintf(gd_csv,"%u, %u, %u, %u, %x, %x, %x\n",
+		fprintf(gd_csv,"%u,%u,%u,%u,%x,%x,%x\n",
 			sb->blocks_per_group,
 			gd->free_blocks_count,
 			gd->free_inodes_count,
@@ -294,7 +399,7 @@ void read_super_block(int disk_fd, SBInfo *sb){
 
 	FILE *sb_csv = fopen("super.csv", "a");
 	if (sb_csv == NULL) error("Opening CSV file");
-	fprintf(sb_csv, "%x, %u, %u, %lu, %ld, %u, %u, %u, %u\n",
+	fprintf(sb_csv, "%x,%u,%u,%lu,%ld,%u,%u,%u,%u\n",
 		sb->magic_number,
 		sb->inodes_count,
 		sb->blocks_count,
