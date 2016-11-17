@@ -163,7 +163,17 @@ void read_inode(const int disk_fd, const GDInfo *gd, const SBInfo *sb, const int
 
 	//go through the data blocks and handle them accordingly
 	int entry_number = 0;
-	for (int i = 0; i < number_of_blocks; i++){
+	//number_of_blocks could be counting indirect blocks
+	int blocks_max = (number_of_blocks) < 15 ? number_of_blocks : 15;
+	for (int i = 0; i < blocks_max; i++){
+		//A value of 0 in this array effectively terminates it with no further block being defined.	All the remaining entries of the array should still be set to 0.
+		if (block_pointers[i] == 0) break;
+
+		if (block_pointers[i] < sb->first_data_block || block_pointers[i] > (IMG_SIZE_BYTES / sb->block_size)){
+			fprintf(stderr, "invalid group: %d inode : %d, block pointer[%d]: %x\n", gd->group_num, inode_number, i, block_pointers[i]);
+			continue;
+		} 
+
 		if (i < 12 && file_type == 'd') read_directory(disk_fd, inode_number, block_pointers[i], &entry_number, sb);
 		else if (i == 12) {
 			if (file_type == 'd') read_indirect_directory(disk_fd, inode_number, block_pointers[i], &entry_number, sb, 1);
@@ -212,6 +222,7 @@ void read_bitmaps(int disk_fd, const GDInfo *gd, const SBInfo *sb, const int bit
 	//start counting blocks based on which group number this is
 	if (bitmap_type == BLOCK_BITMAP_TYPE) {
 		bitmap_block_num = gd->block_bitmap;
+		//dont wnat to count the superblock
 		global_block_num = (gd->group_num * sb->blocks_per_group) + sb->first_data_block;
 		bitmap_size = sb->blocks_per_group;
 	}
@@ -223,6 +234,8 @@ void read_bitmaps(int disk_fd, const GDInfo *gd, const SBInfo *sb, const int bit
 
 	ssize_t bytes_read;
 	char *read_buf = (char *) malloc(sb->block_size);
+	if (read_buf == NULL) error("malloc");
+
 	off_t bitmap_offset = bitmap_block_num * sb->block_size;
 	bytes_read = pread(disk_fd, (void *)read_buf, sb->block_size, bitmap_offset);
 	if (bytes_read < sb->block_size) error("pread bitmap");
