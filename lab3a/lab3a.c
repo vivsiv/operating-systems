@@ -368,8 +368,17 @@ void read_group_descriptor(int disk_fd, const SBInfo *sb){
 		//16bit value indicating the number of inodes allocated to directories for the represented group.
 		gd->used_dirs_count = *(uint16_t *)(read_buf + BGD_USED_DIRS_COUNT_OFFSET);
 
+
+		//From piazza: number of contained blocks: the sample solution just uses the value from super block, 
+		//except for the last group, where this value is the difference between total number of blocks and the sum of blocks of all previous groups
+		int blocks_in_group = i < (n_groups - 1) ? sb->blocks_per_group : sb->blocks_count - ((n_groups - 1) * sb->blocks_per_group);
+		//From piazza: One thing to notice is that for inodes, you just check the first n bits in the bitmap, where n is the number of inodes per group.
+		int inodes_in_group = i < (n_groups - 1) ? sb->inodes_per_group : sb->inodes_count - ((n_groups - 1) * sb->inodes_per_group);
+		read_bitmaps(disk_fd, gd, sb, BLOCK_BITMAP_TYPE, blocks_in_group);
+		read_bitmaps(disk_fd, gd, sb, INODE_BITMAP_TYPE, inodes_in_group);
+
 		fprintf(gd_csv,"%u,%u,%u,%u,%x,%x,%x\n",
-			sb->blocks_per_group,
+			blocks_in_group,
 			gd->free_blocks_count,
 			gd->free_inodes_count,
 			gd->used_dirs_count,
@@ -377,14 +386,6 @@ void read_group_descriptor(int disk_fd, const SBInfo *sb){
 			gd->block_bitmap,
 			gd->inode_table
 		);
-
-		//From piazza: number of contained blocks: the sample solution just uses the value from super block, 
-		//except for the last group, where this value is the difference between total number of blocks and the sum of blocks of all previous groups
-		int block_bitmap_size = i < (n_groups - 1) ? sb->blocks_per_group : sb->blocks_count - ((n_groups - 1) * sb->blocks_per_group);
-		int inode_bitmap_size = i < (n_groups - 1) ? sb->inodes_per_group : sb->inodes_count - ((n_groups - 1) * sb->inodes_per_group);
-		read_bitmaps(disk_fd, gd, sb, BLOCK_BITMAP_TYPE, block_bitmap_size);
-		read_bitmaps(disk_fd, gd, sb, INODE_BITMAP_TYPE, inode_bitmap_size);
-		
 
 		bgd_offset += BGD_SIZE;
 		if (i % 2 != 0){
