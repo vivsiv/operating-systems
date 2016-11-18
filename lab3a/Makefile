@@ -11,5 +11,8 @@ clean:
 	rm lab3a
 	rm *.csv
 
+check:
+	python check.py test_csvs
+
 dist:
-	tar pczf lab3a-303652195.tar.gz lab3a.c lab3a.h Makefile README
+	tar pczf lab3a-303652195.tar.gz lab3a.c lab3a.h Makefile README check.py

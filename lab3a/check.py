@@ -1,8 +1,12 @@
 import os
+import sys
 from subprocess import call
 
+if len(sys.argv) < 2:
+	print "Usage: python check.py <correct csvs folder>"
+
 curr_dir = os.getcwd();
-test_dir = curr_dir + "/test_csvs"
+test_dir = curr_dir + "/" + sys.argv[1]
 
 for filename in os.listdir(test_dir):
 	# print filename

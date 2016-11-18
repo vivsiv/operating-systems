@@ -1,2 +1,58 @@
 Vivek Sivakumar
 UID: 303652195
+
+Before starting any analysis I use the sys/stat.h library just to find out the size of the image in bytes
+
+Superblock
+Reading the superblock is fairly straight forward, I just used the ext2 documentation to get the superblock offset, size, magic number, and the offsets for the fields I desired. I then read from the offset into a buffer
+and interpreted the bytes at each offset I cared about to construct my SBInfo struct that would be passed throughout my program.
+
+Group Descriptor
+I used the ext2 documentation to create an ext2 group_desc_struct that I ultimately used just to find out the
+size of a group descriptor so I could successfully iterate through the whole table. I could have just read data
+from the table into the group desc struct instead of a buffer, but at that point the buffer + offset plan was working and I just wanted to keep moving. 
+
+Once I extracted the bitmaps (inode & block) from the group descriptor I passed them along with other relevant information to the read bitmap function.
+
+One quirk that was mentioned in piazza is that the blocks per group. For all blocks its the same as the
+blocks per group in the super block except for the last one where its total blocks in the superblock - number of
+blocks that have already been analyzed.
+
+Bitmaps
+For bitmaps I used the type of bitmap to determine the appropriate block number I was on, then I pulled
+one byte of the bitmap at a time and parsed its 8 bits, printing the ones that were free and passing the ones
+that were allocated inodes on for further analysis.
+
+I had to do some maneuvering around the case where the number of blocks doesnt divide evenly into 8 (number of bits in a byte). I think this code is correct but the test image divides evenly so I'm not sure here.
+
+Inodes
+To read inodes I had to rely on the documentation to build an inode struct and size it just like group descriptors
+again I didnt read from the image into the struct because I had already heavily commited to my buffer + offsets style. 
+
+After extracting the values I wanted, I had to iterate through each of the inodes data blocks and investigate them further.
+
+If the file was a directory I had to analyze the directory
+
+If the file was an indirect block I had to analyze the indirect block
+
+The special case that wasn't really talked about in the special case was what if a block is both! I had to do both in that case.
+
+Before sending a block to be analyzed further I had to make sure it wasn't pointing to 0 or garbage. 
+I got confused with what to do in the case of a 0 pointer: abandon the rest of the array like the ext2 documentation says or just move on to the next block like was suggested on piazza. I decided to just move on to the next one but this left me really confused.
+
+Directory
+For the directory I just read the block number that was passed in and printed out its entries.
+
+One quirk was having to read the entry_length and increment the read_buf to the next entry with that instead
+of just relying on the size of a struct.
+
+Indirect Directory
+Directories can have indirect blocks! Like inode 30721, I needed a method which read the indirect blocks and called read directory on these indirect blocks. Directories can also have double indirect blocks, which means i needed a method which could call the single indirect block method, and so on for triple indirect blocks. This led
+me to a recursive read_indirect_block with a level parameter. If the level is above 1 call read_indirect again with the new pointer and decrement the level, if the level is 1 call read_directory with the new block pointer
+
+Indirect Block
+I used the same recursive scheme as with indirect directories except when the level got to 1 I just did nothing.
+
+Testing:
+
+I included a script I wrote called check.py. This script takes in a directory of correct csvs and compares each csv outputted by my program to the csv in this directory and prints the diff to the command line. If successful this should output nothing!
