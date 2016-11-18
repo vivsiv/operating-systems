@@ -108,9 +108,8 @@ int main(int argc, char *argv[]){
 
 	//One socket for listening, the other for accepting a connection
 	int sock_fd, newsock_fd;
-	socklen_t clilen;
 
-	struct sockaddr_in serv_addr, cli_addr;
+	struct sockaddr_in serv_addr;
 
 	if ((sock_fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) error("Error opening socket");
 
@@ -123,15 +122,15 @@ int main(int argc, char *argv[]){
 		error("Error binding socket");
 	}
 
-	
 	listen(sock_fd, 1);
 	fprintf(stdout, "Listening on port %d for connections\n", port_no);
 
-	newsock_fd = accept(sock_fd, (struct sockaddr *)&cli_addr, &clilen);
+	newsock_fd = accept(sock_fd, NULL, NULL);
 	fprintf(stdout, "Received Connection\n");
 	//Since we're only accepting one connection, we can just close the listening socket
 	close(sock_fd);
-	if (newsock_fd < 1) error("Error accepting connection");
+	// printf("%d\n",newsock_fd);
+	if (newsock_fd < 0) error("Error accepting connection");
 	
 	int server_to_shell_pipe[2];
 	int shell_to_server_pipe[2];
