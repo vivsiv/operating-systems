@@ -22,8 +22,13 @@ void read_indirect_block(const int disk_fd, const uint32_t block_number, const S
 	while (blocks_analyzed < pointers_per_block){
 		uint32_t new_block_number = *(pointer_buf + blocks_analyzed);
 		if (new_block_number != 0){
-			fprintf(ind_csv,"%x,%u,%x\n", block_number, blocks_analyzed, new_block_number);
-			if (level > 1) read_indirect_block(disk_fd, new_block_number, sb, level - 1);
+			if (new_block_number > sb->blocks_count){
+				fprintf(stderr, "Indirect block %x - invalid entry[%d] = %x\n", block_number, blocks_analyzed, new_block_number);
+			}
+			else {
+				fprintf(ind_csv,"%x,%u,%x\n", block_number, blocks_analyzed, new_block_number);
+				if (level > 1) read_indirect_block(disk_fd, new_block_number, sb, level - 1);
+			}
 		}
 		blocks_analyzed++;
 	}
@@ -35,6 +40,7 @@ void read_indirect_block(const int disk_fd, const uint32_t block_number, const S
 void read_directory(const int disk_fd, const int parent_inode_number, const uint32_t block_number, int *entry_number, const SBInfo *sb){
 	ssize_t bytes_read;
 	char *read_buf = (char *) malloc(sb->block_size);
+	if (read_buf == NULL) error("malloc");
 
 	bytes_read = pread(disk_fd, (void *)read_buf, sb->block_size, block_number * sb->block_size);
 	if (bytes_read < sb->block_size) error("pread directory");
@@ -45,13 +51,33 @@ void read_directory(const int disk_fd, const int parent_inode_number, const uint
 
 	char* entry_pointer = read_buf;
 	uint32_t bytes_scanned = 0;
+
 	while (bytes_scanned < sb->block_size){
 		//32 bit inode number of the file entry. A value of 0 indicate that the entry is not used.
 		uint32_t inode_number = *(uint32_t *)(entry_pointer + DIR_PARENT_INODE_NUMBER_OFFSET);
+		//file entry inode number should be within the super-block specified range (number of inodes)
+		if (inode_number > sb->inodes_count){
+			fprintf(stderr, "Inode %d, block %u - bad dirent: Inode = %u\n", parent_inode_number, block_number, inode_number);
+	    	break;
+		}
+
 		//16bit unsigned displacement to the next directory entry from the start of the current directory entry. 
 	    uint16_t entry_length = *(uint16_t *)(entry_pointer + DIR_ENTRY_LENGTH_OFFSET);
+	    //entry length should be reasonable (e.g. 8-1024 bytes) and fit within the file length
+	    if (entry_length < 8 || entry_length > 1024){
+	    	fprintf(stderr, "Inode %d, block %u - bad dirent: Inode = %u\n", parent_inode_number, block_number, inode_number);
+	    	break;
+	    }
+
 	    //8 bit unsigned value indicating how many bytes of character data are contained in the name.
-	    uint8_t  name_length = *(uint8_t *)(entry_pointer + DIR_NAME_LENGTH_OFFSET);
+	    uint8_t name_length = *(uint8_t *)(entry_pointer + DIR_NAME_LENGTH_OFFSET);
+	    //name length should fit within the entry length
+	    if (name_length > entry_length){
+	    	fprintf(stderr, "Inode %d, block %u - bad dirent: len = %u, name_len = %u\n", 
+	    		parent_inode_number, block_number, entry_length, name_length);
+	    	break;
+	    }
+
 	    //Name of the entry. The ISO-Latin-1 character set is expected in most system. The name must be no longer than 255 bytes after encoding.
 	    char name[name_length + 3];
 	    name[0] = '"';
@@ -97,8 +123,13 @@ void read_indirect_directory(const int disk_fd, const int parent_inode_number,
 	while (blocks_analyzed < pointers_per_block){
 		uint32_t new_block_number = *(pointer_buf + blocks_analyzed);
 		if (new_block_number != 0){
-			if (level == 1) read_directory(disk_fd, parent_inode_number, new_block_number, entry_number, sb);
-			else read_indirect_directory(disk_fd, parent_inode_number, new_block_number, entry_number, sb, level - 1);
+			if (new_block_number > sb->blocks_count){
+				fprintf(stderr, "Indirect block %x - invalid entry[%d] = %x\n", block_number, blocks_analyzed, new_block_number);
+			}
+			else {
+				if (level == 1) read_directory(disk_fd, parent_inode_number, new_block_number, entry_number, sb);
+				else read_indirect_directory(disk_fd, parent_inode_number, new_block_number, entry_number, sb, level - 1);
+			}
 		}
 		blocks_analyzed++;
 	}
@@ -161,20 +192,26 @@ void read_inode(const int disk_fd, const GDInfo *gd, const SBInfo *sb, const int
 	//A value of 0 in this array effectively terminates it with no further block being defined.
 	uint32_t *block_pointers = (uint32_t *)(read_buf + IN_BLOCK_POINTERS_OFFSET);
 
-	//go through the data blocks and handle them accordingly
+	//From Piazza: BTW, entry number starts from 0 within each diretory
 	int entry_number = 0;
 	//number_of_blocks could be counting indirect blocks
-	int blocks_max = (number_of_blocks) < 15 ? number_of_blocks : 15;
+	int blocks_max = (number_of_blocks < 15) ? number_of_blocks : 15;
+	//go through the data blocks and handle them accordingly
 	for (int i = 0; i < blocks_max; i++){
-		//A value of 0 in this array effectively terminates it with no further block being defined.	All the remaining entries of the array should still be set to 0.
-		if (block_pointers[i] == 0) break;
+		//From ext2 doc: A value of 0 in this array effectively terminates it with no further block being defined. All the remaining entries of the array should still be set to 0.
+		//From piazza: The sample solution does not skip block whose number is 0, this is definitely wrong
+		//Confused what to do here!! So I just used continue(skipped 0s) instead of break(stop analyzing all blocks on 0)
+		if (block_pointers[i] == 0) continue;
 
-		if (block_pointers[i] < sb->first_data_block || block_pointers[i] > (IMG_SIZE_BYTES / sb->block_size)){
+		//All block numbers should be between the first data block number and the file system size
+		if (block_pointers[i] < sb->first_data_block || block_pointers[i] > sb->blocks_count){
 			fprintf(stderr, "invalid group: %d inode : %d, block pointer[%d]: %x\n", gd->group_num, inode_number, i, block_pointers[i]);
 			continue;
 		} 
 
-		if (i < 12 && file_type == 'd') read_directory(disk_fd, inode_number, block_pointers[i], &entry_number, sb);
+		if (i < 12 && file_type == 'd') {
+			read_directory(disk_fd, inode_number, block_pointers[i], &entry_number, sb);
+		}
 		else if (i == 12) {
 			if (file_type == 'd') read_indirect_directory(disk_fd, inode_number, block_pointers[i], &entry_number, sb, 1);
 			read_indirect_block(disk_fd, block_pointers[i], sb, 1);
@@ -261,10 +298,8 @@ void read_bitmaps(int disk_fd, const GDInfo *gd, const SBInfo *sb, const int bit
 				fprintf(bitmap_csv, "%x,%d\n", bitmap_block_num, global_block_num);
 			}
 			else if (bitmap_type == INODE_BITMAP_TYPE) {
-				//fprintf(stdout, "checking allocated inode %d\n", (bitmap_byte & (1 << j)));
 				//where in the inode table is this block
 				int inode_table_idx = (i * 8) + bit_num;
-				//fprintf(stdout, "calling read inode\n");
 				read_inode(disk_fd, gd, sb, global_block_num, inode_table_idx);
 			}
 			global_block_num++;
@@ -425,14 +460,12 @@ void read_super_block(int disk_fd, SBInfo *sb){
 		exit(1);
 	}
 
-	int image_size_blocks;
-	if (IMG_SIZE_BYTES % sb->block_size != 0) image_size_blocks = (IMG_SIZE_BYTES / sb->block_size) + 1;
-	else image_size_blocks = (IMG_SIZE_BYTES / sb->block_size);
-	fprintf(stdout, "image_size_blocks: %d\n", image_size_blocks);
+	int image_size_blocks = (IMG_SIZE_BYTES % sb->block_size != 0) ? (IMG_SIZE_BYTES / sb->block_size) + 1 : (IMG_SIZE_BYTES / sb->block_size);
+	fprintf(stdout, "Image Size (Blocks): %d\n", image_size_blocks);
 
 	//32 bit value indicating the total number of blocks in the system including all used, free and reserved
 	sb->blocks_count = *(uint32_t *)(read_buf + SB_BLOCKS_COUNT_OFFSET);
-	//Total blocks and first data block must be consistent with the file size
+	//Total blocks must be consistent with the file size
 	if (sb->blocks_count > image_size_blocks){
 		fprintf(stderr, "Superblock - invalid block count %u > image size %d\n", image_size_blocks, sb->blocks_count);
 		exit(1);
@@ -512,7 +545,7 @@ int main(int argc, char *argv[]) {
 	struct stat stat_buf;
 	fstat(disk_fd, &stat_buf);
 	IMG_SIZE_BYTES = stat_buf.st_size;
-	fprintf(stdout, "image_size_bytes: %d\n", IMG_SIZE_BYTES);
+	fprintf(stdout, "Image Size (Bytes): %d\n", IMG_SIZE_BYTES);
 
 	SBInfo *sb = (SBInfo *) malloc(sizeof(SBInfo));
 	if (sb == NULL) error("malloc");
