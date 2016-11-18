@@ -215,21 +215,20 @@ void read_inode(const int disk_fd, const GDInfo *gd, const SBInfo *sb, const int
 	free(read_buf);
 }
 
-void read_bitmaps(int disk_fd, const GDInfo *gd, const SBInfo *sb, const int bitmap_type){
+void read_bitmaps(int disk_fd, const GDInfo *gd, const SBInfo *sb, const int bitmap_type, const int bitmap_size){
 	int bitmap_block_num;
 	int global_block_num;
-	int bitmap_size;
 	//start counting blocks based on which group number this is
 	if (bitmap_type == BLOCK_BITMAP_TYPE) {
 		bitmap_block_num = gd->block_bitmap;
-		//dont wnat to count the superblock
+		//From Piazza: Keep in mind that for the whole file system, block number starts from 0.
+		//However we dont want to count the superblock
 		global_block_num = (gd->group_num * sb->blocks_per_group) + sb->first_data_block;
-		bitmap_size = sb->blocks_per_group;
 	}
 	else {
 		bitmap_block_num = gd->inode_bitmap;
+		//From Piazza: Keep in mind that for the whole file system, inode number starts from 1.
 		global_block_num = (gd->group_num * sb->inodes_per_group) + 1;
-		bitmap_size = sb->inodes_per_group;
 	}
 
 	ssize_t bytes_read;
@@ -379,8 +378,12 @@ void read_group_descriptor(int disk_fd, const SBInfo *sb){
 			gd->inode_table
 		);
 
-		read_bitmaps(disk_fd, gd, sb, BLOCK_BITMAP_TYPE);
-		read_bitmaps(disk_fd, gd, sb, INODE_BITMAP_TYPE);
+		//From piazza: number of contained blocks: the sample solution just uses the value from super block, 
+		//except for the last group, where this value is the difference between total number of blocks and the sum of blocks of all previous groups
+		int block_bitmap_size = i < (n_groups - 1) ? sb->blocks_per_group : sb->blocks_count - ((n_groups - 1) * sb->blocks_per_group);
+		int inode_bitmap_size = i < (n_groups - 1) ? sb->inodes_per_group : sb->inodes_count - ((n_groups - 1) * sb->inodes_per_group);
+		read_bitmaps(disk_fd, gd, sb, BLOCK_BITMAP_TYPE, block_bitmap_size);
+		read_bitmaps(disk_fd, gd, sb, INODE_BITMAP_TYPE, inode_bitmap_size);
 		
 
 		bgd_offset += BGD_SIZE;
