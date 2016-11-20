@@ -1,6 +1,6 @@
 #include "lab3a.h"
 
-static int IMG_SIZE_BYTES;
+// static int IMG_SIZE_BYTES;
 
 void error(char *msg){
 	fprintf(stderr, "%s\n", msg);
@@ -460,24 +460,24 @@ void read_super_block(int disk_fd, SBInfo *sb){
 		exit(1);
 	}
 
-	int image_size_blocks = (IMG_SIZE_BYTES % sb->block_size != 0) ? (IMG_SIZE_BYTES / sb->block_size) + 1 : (IMG_SIZE_BYTES / sb->block_size);
-	fprintf(stdout, "Image Size (Blocks): %d\n", image_size_blocks);
+	// int image_size_blocks = (IMG_SIZE_BYTES % sb->block_size != 0) ? (IMG_SIZE_BYTES / sb->block_size) + 1 : (IMG_SIZE_BYTES / sb->block_size);
+	// fprintf(stdout, "Image Size (Blocks): %d\n", image_size_blocks);
 
 	//32 bit value indicating the total number of blocks in the system including all used, free and reserved
 	sb->blocks_count = *(uint32_t *)(read_buf + SB_BLOCKS_COUNT_OFFSET);
 	//Total blocks must be consistent with the file size
-	if (sb->blocks_count > image_size_blocks){
-		fprintf(stderr, "Superblock - invalid block count %u > image size %d\n", image_size_blocks, sb->blocks_count);
-		exit(1);
-	}
+	// if (sb->blocks_count > image_size_blocks){
+	// 	fprintf(stderr, "Superblock - invalid block count %u > image size %d\n", image_size_blocks, sb->blocks_count);
+	// 	exit(1);
+	// }
 
 	//32 bit value identifying the first data block, in other word the id of the block containing the superblock structure.
 	sb->first_data_block = *(uint32_t *)(read_buf + SB_FIRST_DATA_BLOCK_OFFSET);
 	//First data block must be consistent with the file size
-	if (sb->first_data_block > image_size_blocks){
-		fprintf(stderr, "Superblock - invalid first block %u > image size %d\n", image_size_blocks, sb->first_data_block);
-		exit(1);
-	}
+	// if (sb->first_data_block > image_size_blocks){
+	// 	fprintf(stderr, "Superblock - invalid first block %u > image size %d\n", image_size_blocks, sb->first_data_block);
+	// 	exit(1);
+	// }
 	
 
 	//The fragment size is computed using this 32bit value as the number of bits to shift left the value 1024. Note that a negative value would shift the bit right rather than left.
@@ -542,10 +542,11 @@ int main(int argc, char *argv[]) {
 	//open the provided disk image
 	int disk_fd = open(argv[1], O_RDONLY);
 	if (disk_fd < 0) error("Opening disk image");
-	struct stat stat_buf;
-	fstat(disk_fd, &stat_buf);
-	IMG_SIZE_BYTES = stat_buf.st_size;
-	fprintf(stdout, "Image Size (Bytes): %d\n", IMG_SIZE_BYTES);
+	
+	// struct stat stat_buf;
+	// fstat(disk_fd, &stat_buf);
+	// IMG_SIZE_BYTES = stat_buf.st_size;
+	// fprintf(stdout, "Image Size (Bytes): %d\n", IMG_SIZE_BYTES);
 
 	SBInfo *sb = (SBInfo *) malloc(sizeof(SBInfo));
 	if (sb == NULL) error("malloc");

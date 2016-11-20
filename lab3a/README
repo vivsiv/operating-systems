@@ -1,8 +1,6 @@
 Vivek Sivakumar
 UID: 303652195
 
-Before starting any analysis I use the sys/stat.h library just to find out the size of the image in bytes
-
 Superblock
 Reading the superblock is fairly straight forward, I just used the ext2 documentation to get the superblock offset, size, magic number, and the offsets for the fields I desired. I then read from the offset into a buffer
 and interpreted the bytes at each offset I cared about to construct my SBInfo struct that would be passed throughout my program.
