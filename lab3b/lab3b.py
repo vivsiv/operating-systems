@@ -25,6 +25,12 @@ bitmap_constants = {
 	"free_block_number_idx" : 1
 }
 
+directory_constants = {
+	"parent_inode_number_idx" : 0,
+	"entry_number_idx" : 1,
+	"inode_number_idx" : 4
+}
+
 
 # CHECK 1
 # Unallocated block: blocks that are in use but also listed on the free bitmap. Here the INODEs should be listed in increasing order of the inode_num.
@@ -56,14 +62,22 @@ def duplicate_allocated_block(block_reference_map, output_file):
 # Unallocated inode: inodes that are in use by directory entries (the inode number of the file entry field) but not shown up in inode.csv. Here the DIRECTORYs should be listed in increasing order of the inode_num.
 # UNALLOCATED INODE < inode_num > REFERENCED BY (DIRECTORY < inode_num > ENTRY < entry_num >) * n
 # Example: UNALLOCATED INODE < 21 > REFERENCED BY DIRECTORY < 2 > ENTRY < 12 >
-def unallocated_inode(csv_files, output_file):
-	print "not implemented"
+def unallocated_inode(directory_csv_reader, inode_list, output_file):
+	for row in directory_csv_reader:
+		inode_num = int(row[directory_constants["inode_number_idx"]])
+		entry_num = int(row[directory_constants["entry_number_idx"]])
+		directory_num = int(row[directory_constants["parent_inode_number_idx"]])
+		# print("{0},{1},{2}".format(directory_num,entry_num,inode_num))
+		if inode_num not in inode_list:
+			output_string = "UNALLOCATED INODE < {0} > REFERENCED BY DIRECTORY < {1} > ENTRY < {2}\n".format(inode_num,directory_num,entry_num) 
+			output_file.write(output_string)
 
 # CHECK 4
 # Missing inode: inodes that are not in use, and not listed on the free bitmap.
 # MISSING INODE < inode_num > SHOULD BE IN FREE LIST < block_num >
 # Example: MISSING INODE < 34 > SHOULD BE IN FREE LIST < 4 >
-def missing_inode(csv_files, output_file):
+def missing_inode(inode_list, output_file):
+
 	print "not implemented"
 
 # CHECK 5
@@ -133,17 +147,22 @@ def create_inode_structures(inode_csv_reader):
 	return (allocated_inode_map,block_reference_map)
 
 
-def create_free_data_blocks_set(bitmap_csv_reader,data_bitmap_blocks_set):
-	free_blocks = set([])
+def create_free_blocks_sets(bitmap_csv_reader,inode_bitmap_blocks_set,data_bitmap_blocks_set):
+	free_inode_blocks = set([])
+	free_data_blocks = set([])
 
 	for row in bitmap_csv_reader:
-		if int(row[bitmap_constants["map_block_number_idx"]],16) in data_bitmap_blocks_set:
+		if int(row[bitmap_constants["map_block_number_idx"]],16) in inode_bitmap_blocks_set:
+			free_inode_block = int(row[bitmap_constants["free_block_number_idx"]])
+			free_inode_blocks.add(free_inode_block)
+		elif int(row[bitmap_constants["map_block_number_idx"]],16) in data_bitmap_blocks_set:
 			# print "{0},{1}".format(row[bitmap_constants["map_block_number_idx"]],int(row[bitmap_constants["free_block_number_idx"]]))
 			# print row[bitmap_constants["map_block_number_idx"]]
-			free_block = int(row[bitmap_constants["free_block_number_idx"]])
-			free_blocks.add(free_block)
+			free_data_block = int(row[bitmap_constants["free_block_number_idx"]])
+			free_data_blocks.add(free_data_block)
 
-	return free_blocks
+	return free_inode_blocks,free_data_blocks
+
 
 
 def main():
@@ -162,10 +181,15 @@ def main():
 		csv_readers[sys.argv[i].split(".")[0]] = csv.reader(csv_file)
 
 	superblock_info = create_super_block_info(csv_readers["super"])
+
 	bitmap_blocks_tuple = create_bitmap_blocks_sets(csv_readers["group"])
 	inode_bitmap_blocks_set = bitmap_blocks_tuple[0]
 	data_bitmap_blocks_set = bitmap_blocks_tuple[1]
-	free_data_blocks_set = create_free_data_blocks_set(csv_readers["bitmap"],data_bitmap_blocks_set)
+
+	free_blocks_tuple = create_free_blocks_sets(csv_readers["bitmap"],inode_bitmap_blocks_set,data_bitmap_blocks_set)
+	free_inode_blocks_set = free_blocks_tuple[0]
+	free_data_blocks_set = free_blocks_tuple[1]
+
 	inode_structures_tuple = create_inode_structures(csv_readers["inode"])
 	inode_map = inode_structures_tuple[0]
 	block_reference_map = inode_structures_tuple[1]
@@ -174,6 +198,9 @@ def main():
 
 	unallocated_blocks(inode_map,free_data_blocks_set,output_file)
 	duplicate_allocated_block(block_reference_map,output_file)
+
+	inode_list = sorted(map(lambda inode_str: int(inode_str),inode_map.keys()))
+	unallocated_inode(csv_readers["directory"],inode_list,output_file)
 
 	
 
