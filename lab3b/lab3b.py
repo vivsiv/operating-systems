@@ -43,8 +43,14 @@ def unallocated_blocks(inode_map, free_data_blocks_set, output_file):
 # Duplicately allocated block: blocks that are used by more than one inodes. Here the INODEs should be listed in increasing order of the inode_num.
 # MULTIPLY REFERENCED BLOCK < block_num > BY (INODE < inode_num > (INDIRECT BLOCK < block_num>) ENTRY < entry_num >) * n
 # Example: MULTIPLY REFERENCED BLOCK < 613 > BY INODE < 24 > ENTRY < 0 > INODE < 25 > ENTRY < 0 > INODE < 26 > ENTRY < 0 >
-def duplicate_allocated_block(csv_files, output_file):
-	print "not implemented"
+def duplicate_allocated_block(block_reference_map, output_file):
+	for block, references in sorted(block_reference_map.iteritems()):
+		if len(references) > 1:
+			output_string = "MULTIPLY REFERENCED BLOCK < {0} > BY ".format(block)
+			for reference in references:
+				output_string += " INODE < {0} > ENTRY < {1} >".format(reference[0],reference[1])
+			output_string += "\n"
+			output_file.write(output_string)
 
 # CHECK 3
 # Unallocated inode: inodes that are in use by directory entries (the inode number of the file entry field) but not shown up in inode.csv. Here the DIRECTORYs should be listed in increasing order of the inode_num.
@@ -101,8 +107,9 @@ def create_bitmap_blocks_sets(group_csv_reader):
 	return (inode_bitmap_blocks,data_bitmap_blocks)
 
 
-def create_inode_map(inode_csv_reader):
+def create_inode_structures(inode_csv_reader):
 	allocated_inode_map = {}
+	block_reference_map = {}
 	for row in inode_csv_reader:
 		blocks = []
 
@@ -115,8 +122,15 @@ def create_inode_map(inode_csv_reader):
 			if new_block == 0:
 				break;
 			blocks.append(new_block)
+
+			block_key = str(new_block)
+			if block_key in block_reference_map.keys():
+				block_reference_map[block_key].append((int(row[inode_constants["inode_number_idx"]]),i))
+			else:
+				block_reference_map[block_key] = [(int(row[inode_constants["inode_number_idx"]]),i)]
+
 		allocated_inode_map[row[inode_constants["inode_number_idx"]]] = blocks
-	return allocated_inode_map
+	return (allocated_inode_map,block_reference_map)
 
 
 def create_free_data_blocks_set(bitmap_csv_reader,data_bitmap_blocks_set):
@@ -152,11 +166,14 @@ def main():
 	inode_bitmap_blocks_set = bitmap_blocks_tuple[0]
 	data_bitmap_blocks_set = bitmap_blocks_tuple[1]
 	free_data_blocks_set = create_free_data_blocks_set(csv_readers["bitmap"],data_bitmap_blocks_set)
-	inode_map = create_inode_map(csv_readers["inode"])
+	inode_structures_tuple = create_inode_structures(csv_readers["inode"])
+	inode_map = inode_structures_tuple[0]
+	block_reference_map = inode_structures_tuple[1]
 	
 	output_file = open("lab3b_check.txt", "w")
 
 	unallocated_blocks(inode_map,free_data_blocks_set,output_file)
+	duplicate_allocated_block(block_reference_map,output_file)
 
 	
 
