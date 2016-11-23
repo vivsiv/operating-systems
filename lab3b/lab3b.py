@@ -74,7 +74,7 @@ def duplicate_allocated_blocks(block_reference_map, indirect_block_map, output_f
 	for block, references in sorted(block_reference_map.iteritems()):
 		block_key = str(block)
 		if len(references) > 1:
-			output_string = "MULTIPLY REFERENCED BLOCK < {0} > BY ".format(block)
+			output_string = "MULTIPLY REFERENCED BLOCK < {0} > BY".format(block)
 			for reference in references:
 				if block_key in indirect_block_map.keys():
 					indirect_block = indirect_block_map[block_key][1]
@@ -195,9 +195,9 @@ def create_inode_structures(superblock_info, inode_csv_reader, directory_referen
 				output_string = ""
 				if block_key in indirect_block_map.keys():
 					indirect_block = indirect_block_map[block_key][1]
-					output_string = "INVALID BLOCK < {0} > REFERENCED BY INODE < {1} > INDIRECT BLOCK {2} ENTRY < {3} >\n".format(new_block, inode_number, indirect_block, i)
+					output_string = "INVALID BLOCK < {0} > IN INODE < {1} > INDIRECT BLOCK {2} ENTRY < {3} >\n".format(new_block, inode_number, indirect_block, i)
 				else:
-					output_string = "INVALID BLOCK < {0} > REFERENCED BY INODE < {1} > ENTRY < {2} >\n".format(new_block, inode_number, i)
+					output_string = "INVALID BLOCK < {0} > IN INODE < {1} > ENTRY < {2} >\n".format(new_block, inode_number, i)
 				output_file.write(output_string)
 			elif not zeroReached:
 				blocks.append(new_block)
