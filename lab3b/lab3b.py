@@ -18,6 +18,7 @@ group_constants = {
 
 inode_constants = {
 	"inode_number_idx" : 0,
+	"link_count_idx" : 5,
 	"number_of_blocks_idx" : 10,
 	"block_pointers_start_idx" : 11,
 	"block_pointers_length" : 15,
@@ -33,7 +34,9 @@ bitmap_constants = {
 directory_constants = {
 	"parent_inode_number_idx" : 0,
 	"entry_number_idx" : 1,
-	"inode_number_idx" : 4
+	"inode_number_idx" : 4,
+	"name_idx" : 5,
+	"root_directory_inode" : 2
 }
 
 indirect_block_constants = {
@@ -146,11 +149,17 @@ def create_bitmap_blocks_sets(group_csv_reader):
 		
 	return (inode_bitmap_blocks,data_bitmap_blocks)
 
+
+# CHECK 5
+# Incorrect link count: inodes whose link counts do not reflect the number of directory entries that point to them.
+# LINKCOUNT < inode_num > IS < link_count > SHOULD BE < link_count >
+# Example: LINKCOUNT < 1714 > IS < 3 > SHOULD BE < 2 >
+
 # CHECK 7
 # Invalid block pointer: block pointer that has an invalid block number.
 # INVALID BLOCK < block_num > IN INODE < inode_num > (INDIRECT BLOCK < block_num >) ENTRY < entry_num >
 # Example: INVALID BLOCK < 1 > IN INODE < 2 > INDIRECT BLOCK < 3 > ENTRY < 4 > or INVALID BLOCK < 1 > IN INODE < 2 > ENTRY < 4 >
-def create_inode_structures(superblock_info, inode_csv_reader, indirect_block_map, output_file):
+def create_inode_structures(superblock_info, inode_csv_reader, directory_reference_map, indirect_block_map, output_file):
 	allocated_inode_map = {}
 	block_reference_map = {}
 
@@ -198,8 +207,17 @@ def create_inode_structures(superblock_info, inode_csv_reader, indirect_block_ma
 				else:
 					block_reference_map[block_key] = [(inode_number,i)]
 			
+		inode_key = str(inode_number)
+		allocated_inode_map[inode_key] = blocks
 
-		allocated_inode_map[row[inode_constants["inode_number_idx"]]] = blocks
+		if inode_key in directory_reference_map.keys():
+			link_count = int(row[inode_constants["link_count_idx"]])
+			referenced_directories_count = len(directory_reference_map[inode_key])
+			if link_count != referenced_directories_count:
+				output_string = "LINKCOUNT < {0} > IS < {1} > SHOULD BE < {2} >\n".format(inode_number,link_count,referenced_directories_count)
+				output_file.write(output_string)
+
+
 	return (allocated_inode_map,block_reference_map)
 
 
@@ -220,13 +238,49 @@ def create_free_blocks_sets(bitmap_csv_reader,inode_bitmap_blocks_set,data_bitma
 	return (free_inode_blocks,free_data_blocks)
 
 
-def create_directory_structures(directory_csv_reader):
+# CHECK 6
+# Incorrect directory entry: the '.' and '..' entries that don't link to correct inodes.
+# INCORRECT ENTRY IN < inode_num > NAME < entry_name > LINK TO < inode_num > SHOULD BE < inode_num >
+# Example, INCORRECT ENTRY IN < 1714 > NAME < . > LINK TO < 1713 > SHOULD BE < 1714 >
+def create_directory_structures(directory_csv_reader, output_file):
 	referenced_inodes = set([])
+	directory_reference_map = {}
+	parents_map = {}
 	for row in directory_csv_reader:
 		inode_number = int(row[directory_constants["inode_number_idx"]])
+		parent_inode = int(row[directory_constants["parent_inode_number_idx"]])
+		name = row[directory_constants["name_idx"]]
+
+		if inode_number != parent_inode:
+			parents_map[str(inode_number)] = parent_inode
+		# print parents_map
+
 		referenced_inodes.add(inode_number)
 
-	return referenced_inodes
+		inode_key = str(inode_number)
+		if inode_key in directory_reference_map.keys():
+			directory_reference_map[inode_key].append(parent_inode)
+		else:
+			directory_reference_map[inode_key] = [parent_inode]
+
+
+		if name == ".":
+			if parent_inode != inode_number:
+				output_string = "INCORRECT ENTRY IN < {0} > NAME < {1} > LINK TO < {2} > SHOULD BE < {3} >\n".format(parent_inode,name,inode_number,parent_inode)
+				output_file.write(output_string)
+		if name == "..":
+			if parent_inode == directory_constants["root_directory_inode"]:
+				if parent_inode != inode_number:
+					output_string = "INCORRECT ENTRY IN < {0} > NAME < {1} > LINK TO < {2} > SHOULD BE < {3} >\n".format(parent_inode,name,inode_number,parent_inode)
+					output_file.write(output_string)
+			else:
+				actual_parent = parents_map[str(parent_inode)]
+				if inode_number != actual_parent:
+					output_string = "INCORRECT ENTRY IN < {0} > NAME < {1} > LINK TO < {2} > SHOULD BE < {3} >\n".format(parent_inode,name,inode_number,actual_parent)
+					output_file.write(output_string)
+			
+
+	return (referenced_inodes,directory_reference_map)
 
 
 def create_indirect_block_map(indirect_csv_reader):
@@ -273,18 +327,15 @@ def main():
 	free_inode_blocks_set = free_blocks_tuple[0]
 	free_data_blocks_set = free_blocks_tuple[1]
 
-	inode_structures_tuple = create_inode_structures(superblock_info, csv_readers["inode"], indirect_block_map, output_file)
+	directory_structures_tuple = create_directory_structures(csv_readers["directory"],output_file)
+	directory_inode_list = directory_structures_tuple[0]
+	directory_reference_map = directory_structures_tuple[1]
+	# print directory_reference_map
+
+	inode_structures_tuple = create_inode_structures(superblock_info, csv_readers["inode"], directory_reference_map, indirect_block_map, output_file)
 	inode_map = inode_structures_tuple[0]
 	block_reference_map = inode_structures_tuple[1]
-
-	directory_inode_list = create_directory_structures(csv_readers["directory"])
-
 	
-	# print indirect_block_map
-	
-	
-
-	unallocated_blocks(inode_map, free_data_blocks_set, indirect_block_map, output_file)
 	duplicate_allocated_blocks(block_reference_map, indirect_block_map, output_file)
 
 	inode_list = sorted(map(lambda inode_str: int(inode_str), inode_map.keys()))
@@ -292,6 +343,8 @@ def main():
 
 	first_inode_bitmap = sorted(inode_bitmap_blocks_set)[0]
 	missing_inodes(superblock_info, directory_inode_list, free_inode_blocks_set, first_inode_bitmap, output_file)
+
+	unallocated_blocks(inode_map, free_data_blocks_set, indirect_block_map, output_file)
 
 
 	
