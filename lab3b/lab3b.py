@@ -109,20 +109,6 @@ def missing_inodes(superblock_info, allocated_inode_list, free_inode_list, first
 			output_string = "MISSING INODE < {0} > SHOULD BE IN FREE LIST < {1} >\n".format(i,free_list_num)
 			output_file.write(output_string)
 
-# CHECK 5
-# Incorrect link count: inodes whose link counts do not reflect the number of directory entries that point to them.
-# LINKCOUNT < inode_num > IS < link_count > SHOULD BE < link_count >
-# Example: LINKCOUNT < 1714 > IS < 3 > SHOULD BE < 2 >
-def incorrect_link_count(csv_files, output_file):
-	print "not implemented"
-
-# CHECK 6
-# Incorrect directory entry: the '.' and '..' entries that don't link to correct inodes.
-# INCORRECT ENTRY IN < inode_num > NAME < entry_name > LINK TO < inode_num > SHOULD BE < inode_num >
-# Example, INCORRECT ENTRY IN < 1714 > NAME < . > LINK TO < 1713 > SHOULD BE < 1714 >
-def incorrect_directory_entry(csv_files, output_file):
-	print "not implemented"
-
 
 
 def create_super_block_info(superblock_csv_reader):
