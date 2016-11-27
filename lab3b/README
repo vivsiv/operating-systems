@@ -19,14 +19,14 @@ When I parse indirect.csv I create a map of blocks to the indirect blocks that r
 When I parse bitmap.csv I use the sets generated from group.csv to create a set of free data bitmap blocks and free inode blocks
 
 When I parse directory.csv I identify any incorrectly linked files named "." or "..", build a map of inodes to the directories
-that reference them, and identify unallocated inodes
+that reference them.
 
 
 When I parse inode.csv I:
 	- use the superblock info to find any invalid blocks
 	- build a inode -> block data structure
 	- build a block -> inode data structure
-	- check the directory reference map to see if there are link count errors
+	- check the directory reference map to see if there are link count errors and identify unallocated inodes
 
 I use the free data blocks set and the inode -> blocks map to find unallocated blocks
 

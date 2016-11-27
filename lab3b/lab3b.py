@@ -88,15 +88,16 @@ def duplicate_allocated_blocks(block_reference_map, indirect_block_map, output_f
 # Unallocated inode: inodes that are in use by directory entries (the inode number of the file entry field) but not shown up in inode.csv. Here the DIRECTORYs should be listed in increasing order of the inode_num.
 # UNALLOCATED INODE < inode_num > REFERENCED BY (DIRECTORY < inode_num > ENTRY < entry_num >) * n
 # Example: UNALLOCATED INODE < 21 > REFERENCED BY DIRECTORY < 2 > ENTRY < 12 >
-def unallocated_inodes(directory_csv_reader, inode_list, output_file):
-	for row in directory_csv_reader:
-		inode_num = int(row[directory_constants["inode_number_idx"]])
-		entry_num = int(row[directory_constants["entry_number_idx"]])
-		directory_num = int(row[directory_constants["parent_inode_number_idx"]])
-		# print("{0},{1},{2}".format(directory_num,entry_num,inode_num))
-		if inode_num not in inode_list:
-			output_string = "UNALLOCATED INODE < {0} > REFERENCED BY DIRECTORY < {1} > ENTRY < {2} >\n".format(inode_num,directory_num,entry_num) 
-			output_file.write(output_string)
+def unallocated_inodes(directory_reference_map, inode_list, output_file):
+	for inode, referencing_directories in sorted(directory_reference_map.iteritems()):
+		inode_num = int(inode)
+		for directory_tuple in referencing_directories:
+			directory_num = directory_tuple[0]
+			entry_num = directory_tuple[1]
+			# print("{0},{1},{2}".format(directory_num,entry_num,inode_num))
+			if inode_num not in inode_list:
+				output_string = "UNALLOCATED INODE < {0} > REFERENCED BY DIRECTORY < {1} > ENTRY < {2} >\n".format(inode_num,directory_num,entry_num) 
+				output_file.write(output_string)
 
 # CHECK 4
 # Missing inode: inodes that are not in use, and not listed on the free bitmap.
@@ -235,6 +236,7 @@ def create_directory_structures(directory_csv_reader, output_file):
 	for row in directory_csv_reader:
 		inode_number = int(row[directory_constants["inode_number_idx"]])
 		parent_inode = int(row[directory_constants["parent_inode_number_idx"]])
+		entry_num = int(row[directory_constants["entry_number_idx"]])
 		name = row[directory_constants["name_idx"]]
 
 		if inode_number != parent_inode:
@@ -245,9 +247,9 @@ def create_directory_structures(directory_csv_reader, output_file):
 
 		inode_key = str(inode_number)
 		if inode_key in directory_reference_map.keys():
-			directory_reference_map[inode_key].append(parent_inode)
+			directory_reference_map[inode_key].append((parent_inode,entry_num))
 		else:
-			directory_reference_map[inode_key] = [parent_inode]
+			directory_reference_map[inode_key] = [(parent_inode,entry_num)]
 
 
 		if name == ".":
@@ -325,9 +327,7 @@ def main():
 	duplicate_allocated_blocks(block_reference_map, indirect_block_map, output_file)
 
 	inode_list = sorted(map(lambda inode_str: int(inode_str), inode_map.keys()))
-
-	csv_readers["directory"] = csv.reader(open("directory.csv"))
-	unallocated_inodes(csv_readers["directory"], inode_list, output_file)
+	unallocated_inodes(directory_reference_map, inode_list, output_file)
 
 	first_inode_bitmap = sorted(inode_bitmap_blocks_set)[0]
 	missing_inodes(superblock_info, directory_inode_list, free_inode_blocks_set, first_inode_bitmap, output_file)
