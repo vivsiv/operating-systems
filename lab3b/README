@@ -1,0 +1,40 @@
+Vivek Sivakumar
+UID: 303652195
+
+My project is coded in python and uses the csvreader class to parse the relevant csvs
+
+The project can be run by calling: 
+	python lab3b.py super.csv group.csv bitmap.csv inode.csv directory.csv indirect.csv
+
+	Or for simplicity this has been added to the run target in my makefile
+
+When I parse the csv's I either: report any errors if it's possible at the time or build relevant data structures that I can use to check the csv's for errors later.
+
+When I parse the super.csv I extract all relevant FS info
+
+When I parse group.csv I create a set of data bitmap blocks and a set of inode bitmap blocks
+
+When I parse indirect.csv I create a map of blocks to the indirect blocks that reference them
+
+When I parse bitmap.csv I use the sets generated from group.csv to create a set of free data bitmap blocks and free inode blocks
+
+When I parse directory.csv I identify any incorrectly linked files named "." or "..", build a map of inodes to the directories
+that reference them, and identify unallocated inodes
+
+
+When I parse inode.csv I:
+	- use the superblock info to find any invalid blocks
+	- build a inode -> block data structure
+	- build a block -> inode data structure
+	- check the directory reference map to see if there are link count errors
+
+I use the free data blocks set and the inode -> blocks map to find unallocated blocks
+
+I use the block -> inode map to find duplicately allocated blocks
+
+I use the allocated inode list and free inode list to identify any missing inodes
+
+
+
+
+

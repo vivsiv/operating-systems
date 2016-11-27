@@ -325,6 +325,8 @@ def main():
 	duplicate_allocated_blocks(block_reference_map, indirect_block_map, output_file)
 
 	inode_list = sorted(map(lambda inode_str: int(inode_str), inode_map.keys()))
+
+	csv_readers["directory"] = csv.reader(open("directory.csv"))
 	unallocated_inodes(csv_readers["directory"], inode_list, output_file)
 
 	first_inode_bitmap = sorted(inode_bitmap_blocks_set)[0]
