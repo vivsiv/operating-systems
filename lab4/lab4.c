@@ -40,15 +40,19 @@ int main(int argc, char **argv){
     mraa_init();
     adcPin = mraa_aio_init(ADC_PIN);
 
+    time_t seconds;
+	struct tm *tm;
+
+    FILE *log_file = fopen("log.txt", "a");
+    if (log_file == NULL) fprintf(stderr, "Failed to create log_file\n");
+
 	// check if adc is NULL  
 	while (1) {  
 		adcValue = mraa_aio_read(adcPin);
 		float tempC = convertReading(adcValue);
 		float tempF = celciusToFarenheit(tempC);
 
-		time_t seconds;
-		struct tm *tm;
-
+		
 		seconds = time(&seconds);
 		//Use utc time
 	    if ((tm = gmtime(&seconds)) == NULL) {
@@ -56,7 +60,12 @@ int main(int argc, char **argv){
 	        return 1;
 	    }
 
-		fprintf(stdout, "Timestamp %02d:%02d:%02d Temperature %0.1f\n", tm->tm_hour, tm->tm_min, tm->tm_sec, tempF); 
+	    fprintf(stdout, "Timestamp %02d:%02d:%02d Temperature %0.1f\n", tm->tm_hour, tm->tm_min, tm->tm_sec, tempF);
+		fprintf(log_file, "Timestamp %02d:%02d:%02d Temperature %0.1f\n", tm->tm_hour, tm->tm_min, tm->tm_sec, tempF);
+		fflush(log_file);
+
 		sleep(DELAY_SEC);
-	} 
+	}
+
+	fclose(log_file);
 }
