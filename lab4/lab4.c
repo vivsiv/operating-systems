@@ -125,7 +125,6 @@ int main(int argc, char **argv){
 	fd_set read_fds;
 	char read_buf[32];
 	bzero(read_buf, 32);
-	int n_bytes;
 
 	struct timeval timeout;
 	timeout.tv_sec = 0;
@@ -140,7 +139,7 @@ int main(int argc, char **argv){
 
 		bzero(read_buf, 32);
 		if (FD_ISSET(server_socket, &read_fds)){
-			n_bytes = read(server_socket, read_buf, 31);
+			read(server_socket, read_buf, 31);
 			fprintf(stdout, "Got update: %s from lever.cs.ucla.edu\n", read_buf);
 
 			//If the update is to turn off

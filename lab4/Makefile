@@ -1,6 +1,6 @@
 CC=gcc
 
-CFLAGS=-Wall -lmraa -lm
+CFLAGS=-Wall -lmraa -lm -std=gnu99
 
 GDBFLAGS=-g -Wall -pthread
 
@@ -13,4 +13,4 @@ clean:
 check:
 
 dist:
-	tar pczf lab4-303652195.tar.gz lab4.c Makefile
+	tar pczf lab4-303652195.tar.gz lab4.c Makefile log.txt
