@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <mraa/aio.h>
 #include <unistd.h>
+#include <time.h>
 
 const int ADC_PIN = 0;
 const float ADC_MAX = 1024.0;
@@ -24,6 +25,14 @@ float convertReading(float adcValue) {
     return temperature;
 }
 
+float celciusToFarenheit(float tempC){
+	return (tempC * 1.8) + 32;
+}
+
+float farenheitToCelcius(float tempF){
+	return (tempF - 32) / 1.8;
+}
+
 int main(int argc, char **argv){
 	mraa_aio_context adcPin;   /* ADC pin context */
     float adcValue;  /* Read ADC value */
@@ -34,8 +43,20 @@ int main(int argc, char **argv){
 	// check if adc is NULL  
 	while (1) {  
 		adcValue = mraa_aio_read(adcPin);
-		float temperature = convertReading(adcValue);
-		fprintf(stdout, "Temperature Value = %f\n", temperature); 
+		float tempC = convertReading(adcValue);
+		float tempF = celciusToFarenheit(tempC);
+
+		time_t seconds;
+		struct tm *tm;
+
+		seconds = time(&seconds);
+		//Use utc time
+	    if ((tm = gmtime(&seconds)) == NULL) {
+	        fprintf(stderr, "Getting time\n");
+	        return 1;
+	    }
+
+		fprintf(stdout, "Timestamp %02d:%02d:%02d Temperature %0.1f\n", tm->tm_hour, tm->tm_min, tm->tm_sec, tempF); 
 		sleep(DELAY_SEC);
 	} 
 }
