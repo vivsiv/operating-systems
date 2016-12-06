@@ -1,0 +1,11 @@
+Setting up ssh for the edison
+ls /dev/cu.usbserial-*
+screen /dev/cu.usbserial-XXXXXXXX 115200
+hit enter twice to login
+enter password
+configure_edison --wifi
+connect to eduroam
+vivek@ucla.edu
+enter password
+configure_edison --showWiFiIP
+ssh root@ip
