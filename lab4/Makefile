@@ -13,4 +13,4 @@ clean:
 check:
 
 dist:
-	tar pczf lab4-303652195.tar.gz lab4.c Makefile log.txt
+	tar pczf lab4-303652195.tar.gz lab4.c Makefile sample_log.txt README
