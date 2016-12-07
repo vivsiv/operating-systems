@@ -115,7 +115,7 @@ int main(int argc, char **argv){
     time_t seconds;
 	struct tm *tm;
 
-    FILE *log_file = fopen("log.txt", "a");
+    FILE *log_file = fopen("part2_log.txt", "a");
     if (log_file == NULL) fprintf(stderr, "Failed to create log_file\n");
 
    
@@ -140,7 +140,7 @@ int main(int argc, char **argv){
 		bzero(read_buf, 32);
 		if (FD_ISSET(server_socket, &read_fds)){
 			read(server_socket, read_buf, 31);
-			fprintf(stdout, "Got update: %s from lever.cs.ucla.edu\n", read_buf);
+			fprintf(stdout, "%s\n", read_buf);
 
 			//If the update is to turn off
 			if (strlen(read_buf) == strlen("OFF") && strcmp(read_buf,"OFF") == 0){
@@ -206,12 +206,12 @@ int main(int argc, char **argv){
 
 		    //Write reading update to socket
 		    bzero(reading_str, 50);
-			sprintf(reading_str, "303652195 TEMP=%0.1f", temp);
+			sprintf(reading_str, "303652195 TEMP=%0.1f\n", temp);
 			write(server_socket, reading_str, strlen(reading_str));
 
 			//Log reading locally
-		    fprintf(stdout, "Timestamp %02d:%02d:%02d Temperature %0.1f F/C %s\n", tm->tm_hour, tm->tm_min, tm->tm_sec, temp, TEMP_STRINGS[farenheitFlag]);	
-			fprintf(log_file, "Timestamp %02d:%02d:%02d Temperature %0.1f F/C %s\n", tm->tm_hour, tm->tm_min, tm->tm_sec, temp, TEMP_STRINGS[farenheitFlag]);
+		    fprintf(stdout, "%02d:%02d:%02d %0.1f %s\n", tm->tm_hour, tm->tm_min, tm->tm_sec, temp, TEMP_STRINGS[farenheitFlag]);	
+			fprintf(log_file, "%02d:%02d:%02d %0.1f %s\n", tm->tm_hour, tm->tm_min, tm->tm_sec, temp, TEMP_STRINGS[farenheitFlag]);
 			fflush(log_file);
 		}
 
