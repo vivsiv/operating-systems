@@ -10,7 +10,8 @@ enter password
 configure_edison --showWiFiIP
 ssh root@ip
 
-sample_log.txt - My sample log out put from running my program until the server told it to shut off
+par1_log.txt - My sample log for part 1 with a reading frequency of 1 sec
+part2_log.txt - My log for part 2, accepting commands from the server
 
 My implementation polls the socket before taking a reading to see if there are any pending updates,
 if there are it applies them to the current reading. The one exception is frequency, which it applies
